@@ -134,12 +134,14 @@ void build_tree(std::priority_queue<Node> &tree){
 
 void assign_encode(std::priority_queue<Node> &tree) {
     Node root = tree.top();
-    assign_encode_helper(&root, 0, 0);
+    assign_encode_aux(&root, 0, 0);
 }
 
 //assigns the binary code to each letter
-void assign_encode_helper(Node *root, unsigned int encode, int length) {
-    if (NULL == root) return;
+void assign_encode_aux(Node *root, unsigned int encode, int length) {
+    if (NULL == root){
+       return;
+    }
 
     if (root->letter_name != '\0') {
         root->encode = encode;
