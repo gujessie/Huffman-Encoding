@@ -1,1 +1,2 @@
 # Huffman-Encoding
+/* The code takes a file input and records the frequency of each character. It then transfers the data into a priority queue of Node structures, where each Node represents a character present in the input file. The code then builds the priority queue into the form of a Huffman Tree, where root Nodes have pointers to respective left and right Nodes. The corresponding binary encoding is then assigned to each Node, according to position in the tree */
