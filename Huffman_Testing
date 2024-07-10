@@ -22,7 +22,7 @@ struct node{
    int encode_length;
 
    bool operator<(const node& comp_node) const {
-        if (frq < comp_node.frq) {
+        if (frq > comp_node.frq) {
             return true;
         }
         return false;
@@ -109,6 +109,7 @@ void record_letters(char *string, int ascii_letters[]){
     }
 }
 
+//fix, dont push struct
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
 void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change function name, change ascii_letters parameter to pointer
     // Insert nodes 
@@ -121,9 +122,12 @@ void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change 
             node.right = NULL;
             node.encode = 0;
             node.encode_length = 0;
-            tree.push(node); 
+            tree.push(node); //pass pointer
         }
     }
+    // Node* node = tree.top();
+    // printf("%c, %d" ,node->frq, node->letter_name);
+
 }
 
 //creates huffman tree
@@ -132,7 +136,7 @@ Node* build_tree(std::priority_queue<Node> &tree){
     while(tree.size() > 1){
         //allocates space for left_node
        Node* left_node = (Node*)malloc(sizeof(Node));
-        if (NULL == left_node) {
+        if (!left_node) {
             exit(EXIT_FAILURE);
         }
         *left_node = tree.top();
@@ -140,7 +144,7 @@ Node* build_tree(std::priority_queue<Node> &tree){
 
         //allocates space for right_node
         Node* right_node = (Node*)malloc(sizeof(Node));
-        if (NULL == right_node) {
+        if (!right_node) {
             free(left_node);
             exit(EXIT_FAILURE);
         }
@@ -178,25 +182,25 @@ Node* build_tree(std::priority_queue<Node> &tree){
 
 //assigns the binary code to each letter
 void assign_encode_helper(Node *root, unsigned int encode, int length) {
-    if (NULL == root){
+    if (!root){
         return;
     }
-
+    //printf("root freq: %d", root->frq);
     if (root->letter_name != '\0') {
         printf("%c;\n", root->letter_name);
         root->encode = encode;
-        root->encode_length++;
-        printf("Assigned encode %u with length %d to letter %c\n", root->encode, root->encode_length, root->letter_name);
+        root->encode_length = length;
+        printf("Assigned encode %x with length %d to letter %c\n", root->encode, root->encode_length, root->letter_name);
     }
 
-    if (NULL != root->left) {
+    if (root->left) {
         if (root->left->letter_name != '\0') {
             //printf("%c, %d, %d\n", root->left->letter_name, root->left->encode, root->left->encode_length);
         }
         assign_encode_helper(root->left, (encode << 1), length + 1); 
     }
 
-    if (NULL != root->right) {
+    if (root->right) {
         if (root->right->letter_name != '\0') {
             //printf("%c, %d, %d\n", root->right->letter_name, root->right->encode, root->right->encode_length);
         }
@@ -209,19 +213,24 @@ void assign_encode_helper(Node *root, unsigned int encode, int length) {
 //     assign_encode_helper(&root, 0, 0);
 // }
 
-void free_tree(Node* root) {
-    if (root == NULL) return;
+void free_tree(Node* root) { 
+    if (!root) return;
 
     // Recursively free left and right subtrees
-    free_tree(root->left);
-    free_tree(root->right);
+    if (root->left){
+        free_tree(root->left);
+    }
+    
+    if (root->right){
+        free_tree(root->right);
+    }
 
     // Free the current node
     free(root);
 }
 
 Node* find_node(Node* root, char letter) {
-    if (NULL == root) {
+    if (!root) {
         return NULL;
     }
 
@@ -230,7 +239,7 @@ Node* find_node(Node* root, char letter) {
     }
 
     Node* node = find_node(root->left, letter);
-    if (NULL == node) {
+    if (!node) {
         node = find_node(root->right, letter);
     }
 
