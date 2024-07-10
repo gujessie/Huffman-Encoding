@@ -22,7 +22,7 @@ struct node{
    int encode_length;
 
    bool operator<(const Node& comp_node) const {
-        if (frq < comp_node.frq) {
+        if (frq > comp_node.frq) {
             return true;
         }
         return false;
@@ -124,7 +124,7 @@ Node* build_tree(std::priority_queue<Node> &tree){
     while(tree.size() > 1){
         //allocates space for left_node
        Node* left_node = (Node*)malloc(sizeof(Node));
-        if (NULL == left_node) {
+        if (!left_node) {
             exit(EXIT_FAILURE);
         }
         *left_node = tree.top();
@@ -132,7 +132,7 @@ Node* build_tree(std::priority_queue<Node> &tree){
 
         //allocates space for right_node
         Node* right_node = (Node*)malloc(sizeof(Node));
-        if (NULL == right_node) {
+        if (!right_node) {
             free(left_node);
             exit(EXIT_FAILURE);
         }
@@ -168,6 +168,7 @@ Node* build_tree(std::priority_queue<Node> &tree){
     return NULL;
 }
 
+
 //assigns the binary code to each letter
 void assign_encode_helper(Node *root, unsigned int encode, int length) {
     if (NULL == root) return;
@@ -177,11 +178,11 @@ void assign_encode_helper(Node *root, unsigned int encode, int length) {
         root->encode_length = length;
     }
 
-    if (NULL != root->left) {
+    if (root->left) {
         assign_encode_helper(root->left, (encode << 1), length + 1);  
     }
 
-    if (NULL != root->right) {
+    if (root->right) {
         assign_encode_helper(root->right, ((encode << 1) | 1), length + 1);  
     }
 }
@@ -191,19 +192,24 @@ void assign_encode(std::priority_queue<Node> &tree) {
     assign_encode_helper(&root, 0, 0);
 }
 
-void free_tree(Node* root) {
-    if (root == NULL) return;
+void free_tree(Node* root) { 
+    if (!root) return;
 
     // Recursively free left and right subtrees
-    free_tree(root->left);
-    free_tree(root->right);
+    if (root->left){
+        free_tree(root->left);
+    }
+    
+    if (root->right){
+        free_tree(root->right);
+    }
 
     // Free the current node
     free(root);
 }
 
 Node* find_node(Node* root, char letter) {
-    if (NULL == root) {
+    if (!root) {
         return NULL;
     }
 
@@ -212,7 +218,7 @@ Node* find_node(Node* root, char letter) {
     }
 
     Node* node = find_node(root->left, letter);
-    if (NULL == node) {
+    if (!node) {
         node = find_node(root->right, letter);
     }
 
