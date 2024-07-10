@@ -34,10 +34,15 @@ typedef struct node Node;
 void record_letters(char *string, int ascii_letters[]);
 int compare(const void* a, const void* b);
 void make_queue(std::priority_queue<Node> &tree, int *ascii_letters);
-void build_tree(std::priority_queue<Node> &tree);
+Node* build_tree(std::priority_queue<Node> &tree);
 void assign_encode(std::priority_queue<Node> &tree);
 void assign_encode_helper(Node *root, unsigned int encode, int length);
 char* compress(char *stringtemp, Node letters[]);
+void free_tree(Node* root);
+Node* find_node(Node* root, char letter);
+
+
+
 
 int main (int argc, char *argv[])
 {
@@ -74,9 +79,9 @@ int main (int argc, char *argv[])
  
     record_letters(stringtemp, ascii_letters);
 
-    //sort_letters(letters, ascii_letters);
+  
     make_queue(tree, ascii_letters);
-    build_tree(tree);
+    Node* root = build_tree(tree);
 
     assign_encode(tree);
 }
@@ -114,34 +119,58 @@ void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change 
 }
 
 //creates huffman tree
-void build_tree(std::priority_queue<Node> &tree){
+Node* build_tree(std::priority_queue<Node> &tree){
+
     while(tree.size() > 1){
-        Node left_node = tree.top();
-        tree.pop();
-        Node right_node = tree.top();
+        //allocates space for left_node
+       Node* left_node = (Node*)malloc(sizeof(Node));
+        if (NULL == left_node) {
+            exit(EXIT_FAILURE);
+        }
+        *left_node = tree.top();
         tree.pop();
 
-        Node new_node;
-        new_node.letter_name = '\0'; 
-        new_node.frq = left_node.frq + right_node.frq;
-        new_node.left = &left_node;
-        new_node.right = &right_node;
-        new_node.encode = 0;  
-        new_node.encode_length = 0;
-        tree.push(new_node);
+        //allocates space for right_node
+        Node* right_node = (Node*)malloc(sizeof(Node));
+        if (NULL == right_node) {
+            free(left_node);
+            exit(EXIT_FAILURE);
+        }
+        *right_node = tree.top();
+        tree.pop();
+
+        //allocates space for new_node
+        Node* new_node = (Node*)malloc(sizeof(Node));
+        if (NULL == new_node) {
+            free(left_node);
+            free(right_node);
+            exit(EXIT_FAILURE);
+        }
+        //creates new node
+        new_node->letter_name = '\0';
+        new_node->frq = left_node->frq + right_node->frq;
+        new_node->left = left_node;
+        new_node->right = right_node;
+        new_node->encode = 0;
+        new_node->encode_length = 0;
+        tree.push(*new_node);
     }
-}
 
-void assign_encode(std::priority_queue<Node> &tree) {
-    Node root = tree.top();
-    assign_encode_aux(&root, 0, 0);
+    //returns root node
+    Node* root = (Node*)malloc(sizeof(Node));
+    if (root == NULL) {
+        exit(EXIT_FAILURE);
+    }
+    *root = tree.top();
+    tree.pop();
+    return root;
+
+    return NULL;
 }
 
 //assigns the binary code to each letter
-void assign_encode_aux(Node *root, unsigned int encode, int length) {
-    if (NULL == root){
-       return;
-    }
+void assign_encode_helper(Node *root, unsigned int encode, int length) {
+    if (NULL == root) return;
 
     if (root->letter_name != '\0') {
         root->encode = encode;
@@ -157,6 +186,47 @@ void assign_encode_aux(Node *root, unsigned int encode, int length) {
     }
 }
 
+void assign_encode(std::priority_queue<Node> &tree) {
+    Node root = tree.top();
+    assign_encode_helper(&root, 0, 0);
+}
+
+void free_tree(Node* root) {
+    if (root == NULL) return;
+
+    // Recursively free left and right subtrees
+    free_tree(root->left);
+    free_tree(root->right);
+
+    // Free the current node
+    free(root);
+}
+
+Node* find_node(Node* root, char letter) {
+    if (NULL == root) {
+        return NULL;
+    }
+
+    if (root->letter_name == letter) {
+        return root;
+    }
+
+    Node* node = find_node(root->left, letter);
+    if (NULL == node) {
+        node = find_node(root->right, letter);
+    }
+
+    return node;
+}
+
+
+
+
+
+
+
+
+
 // //write to file
 // char* compress(char *stringtemp, Node letters[]){
 //     char* compdata;
@@ -171,8 +241,94 @@ void assign_encode_aux(Node *root, unsigned int encode, int length) {
 //             }
 //             i++;
 //         }
-//     //...
+//     
 //     }
 
 //     return compdata;
 // }
+
+
+
+// //sorts letters from greatest frequency to least, and records the frequency and name
+// int compare(const void* a, const void* b) {
+//     Node* nodeA = (Node*)a;
+//     Node* nodeB = (Node*)b;
+//     return nodeB->frequency - nodeA->frequency; // For descending order
+// }
+
+// void sort_letters(Node letters[128], int ascii_letters[128]) {
+//     int count = 0;
+
+//     for (int i = 0; i < 128; i++) {
+//         if (ascii_letters[i] > 0) {
+//             letters[count].letter_name = (char)i;
+//             letters[count].frequency = ascii_letters[i];
+//             count++;
+//         }
+//     }
+
+//     qsort(letters, count, sizeof(Node), compare);
+// }
+
+
+// //build the tree
+// void build_tree(Node letters[128], Node nodes[192]) {
+//     int count = 0, i;
+
+//     //make nodes array with character nodes
+//     for (i = 0; i < 128; i++) {
+//         if (letters[i].frq > 0){
+//             nodes[count].frq = letters[i].frq;
+//             nodes[count].letter_name = letters[i].letter_name;
+//             nodes[count].left = NULL;
+//             nodes[count].right = NULL;
+//             count++;
+//         }
+//     }
+
+//     // build tree
+//     while (count > 1) {
+//         Node* left = &nodes[count - 1]; //call pop on priority queue to get two least frequency nodes
+//         Node* right = &nodes[count - 2]; 
+
+//         //malloc new node and then set left and right tree
+//         // make sum node
+//         Node* new_node = &nodes[count];
+//         new_node->letter_name = NULL; 
+//         new_node->frq = left->frq + right->frq;
+//         new_node->left = left;
+//         new_node->right = right;
+
+//         count--;
+
+//         //insert
+//         int c = count -1;  
+//         while (c >= 0 && nodes[c].frq > new_node->frq) {
+//             nodes[c + 1] = nodes[c];
+//             c--;
+//         }
+//         nodes[c + 1] = *new_node;
+//         count++;
+//     }
+// }
+  
+
+// while (phtree->size() > 1) {
+
+//     htree_node *top_node1 = phtree->top();
+
+//     phtree->pop();
+
+//     htree_node *top_node2 = phtree->top();
+
+//     phtree->pop();
+
+ 
+
+//     htree_node *new_node = new_htree_node(-1, top_node1->cnt + top_node2->cnt);
+
+//     new_node->left = top_node1;
+
+//     new_node->right = top_node2;
+
+//     phtree->push(new_node);
