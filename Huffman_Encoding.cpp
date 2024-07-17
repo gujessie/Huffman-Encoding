@@ -30,23 +30,19 @@ struct node{
 };
 typedef struct node Node;
 
-
-void record_letters(char *string, int ascii_letters[]);
-int compare(const void* a, const void* b);
+void record_letters(const char *string, int ascii_letters[]);
 void make_queue(std::priority_queue<Node> &tree, int *ascii_letters);
 Node* build_tree(std::priority_queue<Node> &tree);
-void assign_encode(std::priority_queue<Node> &tree);
 void assign_encode_helper(Node *root, unsigned int encode, int length);
-char* compress(char *stringtemp, Node letters[]);
+void assign_encode(Node *root);
+void compress(FILE *input, Node* root, const char* output_filename);
+void decompress(const char* input_filename, Node* root, const char* output_filename);
 void free_tree(Node* root);
 Node* find_node(Node* root, char letter);
 
-
-
-
 int main (int argc, char *argv[])
 {
-    int ascii_letters[128];
+    int ascii_letters[128] = { 0 };
     Node letters[128];
     std::priority_queue<Node> tree;
 
@@ -63,28 +59,24 @@ int main (int argc, char *argv[])
         return 1;
     }
     
-    fseek(input, 0, SEEK_END);
-    long fsize = ftell(input);
-    fseek(input, 0, SEEK_SET);  
-
-    char *stringtemp = (char*)std::malloc(fsize + 1);
-    //check return type, make sure stringtemp is not null, is so malloc has failed
-    if (NULL == stringtemp){
-        return 1;
+    char line[MAXLENGTH];
+    while (fgets(line, sizeof(line), input)) {
+        record_letters(line, ascii_letters);
     }
+    fseek(input, 0, SEEK_SET);
 
-    fread(stringtemp, fsize, 1, input);
-    fclose(input);
-    stringtemp[fsize] = '\0';
- 
-    record_letters(stringtemp, ascii_letters);
-
-  
     make_queue(tree, ascii_letters);
     Node* root = build_tree(tree);
+    assign_encode(root);
+    compress(input, root, argv[2]);
+    fclose(input);
 
-    assign_encode(tree);
+    decompress(argv[2], root, argv[3]);
+    free_tree(root);
+
+    return 0;
 }
+
 
 /* iterates through a string and records the frequncy of the characters by 
 incrementing the value corresponding index (ascii value) */
@@ -104,7 +96,8 @@ void record_letters(char *string, int ascii_letters[]){
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
 void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change function name, change ascii_letters parameter to pointer
     // Insert nodes 
-    for (int i = 0; i < 128; ++i) {
+    int i;
+    for (i = 0; i < 128; ++i) {
         if (ascii_letters[i] > 0) { 
             Node node;
             node.frq = ascii_letters[i];
@@ -192,6 +185,13 @@ void assign_encode(std::priority_queue<Node> &tree) {
     assign_encode_helper(&root, 0, 0);
 }
 
+
+
+
+
+
+
+
 void free_tree(Node* root) { 
     if (!root) return;
 
@@ -225,10 +225,82 @@ Node* find_node(Node* root, char letter) {
     return node;
 }
 
+void compress(FILE *input, Node* root, const char* output_filename) {
+    FILE *output = fopen(output_filename, "wb");
+    if (output == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+
+    char line[MAXLENGTH];
+    unsigned char buffer = 0;
+    int buffer_index = 0;
+
+    while (fgets(line, sizeof(line), input)) {
+        int index = 0;
+        char letter;
+        Node* node;
+
+        while (line[index] != '\0') {
+            letter = line[index];
+            node = find_node(root, letter);
+            if (node) {
+                int i;
+                for (i = 0; i < node->encode_length; i++) {
+                    buffer <<= 1;
+                    buffer |= (node->encode >> (node->encode_length - i - 1)) & 1;
+                    buffer_index++;
+                    if (buffer_index == 8) {
+                        fwrite(&buffer, 1, 1, output);
+                        buffer = 0;
+                        buffer_index = 0;
+                    }
+                }
+            }
+            index++;
+        }
+    }
+
+    if (buffer_index > 0) {
+        buffer <<= (8 - buffer_index);
+        fwrite(&buffer, 1, 1, output);
+    }
+
+    fclose(output);
+}
 
 
+void decompress(const char* input_filename, Node* root, const char* output_filename) {
+    FILE *input = fopen(input_filename, "rb");
+    FILE *output = fopen(output_filename, "w");
+    if (input == NULL || output == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
 
+    unsigned char buffer;
+    int buffer_index = 0;
+    Node* current = root;
 
+    while (fread(&buffer, 1, 1, input) == 1) {
+        int i;
+        for (i = 7; i >= 0; i--) {
+            if (buffer & (1 << i)) {
+                current = current->right;
+            } else {
+                current = current->left;
+            }
+
+            if (current->left == NULL && current->right == NULL) {
+                fputc(current->letter_name, output);
+                current = root;
+            }
+        }
+    }
+
+    fclose(input);
+    fclose(output);
+}
 
 
 
