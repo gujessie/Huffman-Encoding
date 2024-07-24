@@ -38,6 +38,8 @@ void compress(FILE *input, Node* root, const char* output_filename);
 void decompress(const char* input_filename, Node* root, const char* output_filename);
 void free_tree(Node* root);
 Node* find_node(Node* root, char letter);
+void store_encodings(Node* root, int encodings[128][2]);
+void assign_encode_helper(Node *root, unsigned int encode, int length);
 
 int main (int argc, char *argv[])
 {
