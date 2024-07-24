@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ncurses.h>
 #include <ctype.h>
 #include <time.h>
 #include <functional>
@@ -18,10 +17,10 @@ struct node{
    struct node *right;
    int frq;
    char letter_name;
-   int encode;
+   unsigned int encode;
    int encode_length;
 
-   bool operator<(const Node& comp_node) const {
+   bool operator<(const struct node& comp_node) const {
         if (frq > comp_node.frq) {
             return true;
         }
@@ -96,6 +95,9 @@ void record_letters(char *string, int ascii_letters[]){
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
 void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change function name, change ascii_letters parameter to pointer
     // Insert nodes 
+
+
+    //change in the future
     int i;
     for (i = 0; i < 128; ++i) {
         if (ascii_letters[i] > 0) { 
@@ -106,7 +108,7 @@ void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change 
             node.right = NULL;
             node.encode = 0;
             node.encode_length = 0;
-            tree.push(node); 
+            tree.push(node);   //use pointers
         }
     }
 }
@@ -180,15 +182,9 @@ void assign_encode_helper(Node *root, unsigned int encode, int length) {
     }
 }
 
-void assign_encode(std::priority_queue<Node> &tree) {
-    Node root = tree.top();
-    assign_encode_helper(&root, 0, 0);
+void assign_encode(Node *root) {
+    assign_encode_helper(root, 0, 0);
 }
-
-
-
-
-
 
 
 
@@ -228,13 +224,13 @@ Node* find_node(Node* root, char letter) {
 void compress(FILE *input, Node* root, const char* output_filename) {
     FILE *output = fopen(output_filename, "wb");
     if (output == NULL) {
-        printf("Error opening file\n");
+        printf("Error opening output file\n");
         return;
     }
 
     char line[MAXLENGTH];
-    unsigned char buffer = 0;
-    int buffer_index = 0;
+    unsigned int buffer = 0;
+    int bits_in_buffer = 0;
 
     while (fgets(line, sizeof(line), input)) {
         int index = 0;
@@ -245,25 +241,90 @@ void compress(FILE *input, Node* root, const char* output_filename) {
             letter = line[index];
             node = find_node(root, letter);
             if (node) {
-                int i;
-                for (i = 0; i < node->encode_length; i++) {
-                    buffer <<= 1;
-                    buffer |= (node->encode >> (node->encode_length - i - 1)) & 1;
-                    buffer_index++;
-                    if (buffer_index == 8) {
-                        fwrite(&buffer, 1, 1, output);
-                        buffer = 0;
-                        buffer_index = 0;
-                    }
+                buffer = (buffer << node->encode_length) | node->encode;
+                bits_in_buffer += node->encode_length;
+
+                while (bits_in_buffer >= 8) {
+                    unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
+                    fwrite(&byte, 1, 1, output);
+                    bits_in_buffer -= 8;
                 }
             }
             index++;
         }
     }
 
-    if (buffer_index > 0) {
-        buffer <<= (8 - buffer_index);
-        fwrite(&buffer, 1, 1, output);
+    if (bits_in_buffer > 0) {
+        unsigned char byte = buffer << (8 - bits_in_buffer);
+        fwrite(&byte, 1, 1, output);
+    }
+
+    fclose(output);
+}
+
+void store_encodings_helper(Node* root, int encodings[128][3]) {
+    if (!root) return;
+
+    if (root->letter_name != '\0') {
+        encodings[(int)root->letter_name][0] = root->encode;
+        encodings[(int)root->letter_name][1] = root->encode_length;
+        encodings[(int)root->letter_name][2] = root->letter_name;  // Store character
+    }
+
+    if (root->left) {
+        store_encodings_helper(root->left, encodings);
+    }
+
+    if (root->right) {
+        store_encodings_helper(root->right, encodings);
+    }
+}
+
+void store_encodings(Node* root, int encodings[128][3]) {
+    for (int i = 0; i < 128; ++i) {
+        encodings[i][0] = 0;   // Initialize encode
+        encodings[i][1] = 0;   // Initialize encode length
+        encodings[i][2] = 0;   // Initialize character
+    }
+    store_encodings_helper(root, encodings);
+}
+
+void compress(FILE *input, Node* root, const char* output_filename) {
+    FILE *output = fopen(output_filename, "wb");
+    if (output == NULL) {
+        printf("Error opening output file\n");
+        return;
+    }
+
+    char line[MAXLENGTH];
+    unsigned int buffer = 0;
+    int bits_in_buffer = 0;
+
+    while (fgets(line, sizeof(line), input)) {
+        int index = 0;
+        char letter;
+        Node* node;
+
+        while (line[index] != '\0') {
+            letter = line[index];
+            node = find_node(root, letter);
+            if (node) {
+                buffer = (buffer << node->encode_length) | node->encode;
+                bits_in_buffer += node->encode_length;
+
+                while (bits_in_buffer >= 8) {
+                    unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
+                    fwrite(&byte, 1, 1, output);
+                    bits_in_buffer -= 8;
+                }
+            }
+            index++;
+        }
+    }
+
+    if (bits_in_buffer > 0) {
+        unsigned char byte = buffer << (8 - bits_in_buffer);
+        fwrite(&byte, 1, 1, output);
     }
 
     fclose(output);
@@ -272,23 +333,35 @@ void compress(FILE *input, Node* root, const char* output_filename) {
 
 void decompress(const char* input_filename, Node* root, const char* output_filename) {
     FILE *input = fopen(input_filename, "rb");
-    FILE *output = fopen(output_filename, "w");
-    if (input == NULL || output == NULL) {
-        printf("Error opening file\n");
+    if (input == NULL) {
+        printf("Error opening input file\n");
         return;
     }
 
-    unsigned char buffer;
-    int buffer_index = 0;
+    FILE *output = fopen(output_filename, "w");
+    if (output == NULL) {
+        printf("Error opening output file\n");
+        fclose(input);
+        return;
+    }
+
+    unsigned int buffer = 0;
+    int bits_in_buffer = 0;
+    unsigned char byte;
     Node* current = root;
 
-    while (fread(&buffer, 1, 1, input) == 1) {
-        int i;
-        for (i = 7; i >= 0; i--) {
-            if (buffer & (1 << i)) {
-                current = current->right;
-            } else {
+    while (fread(&byte, 1, 1, input) == 1) {
+        buffer = (buffer << 8) | byte;
+        bits_in_buffer += 8;
+
+        while (bits_in_buffer > 0) {
+            int bit = (buffer >> (bits_in_buffer - 1)) & 1;
+            bits_in_buffer--;
+
+            if (bit == 0) {
                 current = current->left;
+            } else {
+                current = current->right;
             }
 
             if (current->left == NULL && current->right == NULL) {
@@ -301,112 +374,3 @@ void decompress(const char* input_filename, Node* root, const char* output_filen
     fclose(input);
     fclose(output);
 }
-
-
-
-
-// //write to file
-// char* compress(char *stringtemp, Node letters[]){
-//     char* compdata;
-//     int index = 0, i;
-//     char letter;
-
-//     while (stringtemp[index] != '\0'){
-//         letter = stringtemp[index];
-//         for(i = 0; i < 128; i++){
-//             if(letters[i].letter_name == letter){
-//                 break;
-//             }
-//             i++;
-//         }
-//     
-//     }
-
-//     return compdata;
-// }
-
-
-
-// //sorts letters from greatest frequency to least, and records the frequency and name
-// int compare(const void* a, const void* b) {
-//     Node* nodeA = (Node*)a;
-//     Node* nodeB = (Node*)b;
-//     return nodeB->frequency - nodeA->frequency; // For descending order
-// }
-
-// void sort_letters(Node letters[128], int ascii_letters[128]) {
-//     int count = 0;
-
-//     for (int i = 0; i < 128; i++) {
-//         if (ascii_letters[i] > 0) {
-//             letters[count].letter_name = (char)i;
-//             letters[count].frequency = ascii_letters[i];
-//             count++;
-//         }
-//     }
-
-//     qsort(letters, count, sizeof(Node), compare);
-// }
-
-
-// //build the tree
-// void build_tree(Node letters[128], Node nodes[192]) {
-//     int count = 0, i;
-
-//     //make nodes array with character nodes
-//     for (i = 0; i < 128; i++) {
-//         if (letters[i].frq > 0){
-//             nodes[count].frq = letters[i].frq;
-//             nodes[count].letter_name = letters[i].letter_name;
-//             nodes[count].left = NULL;
-//             nodes[count].right = NULL;
-//             count++;
-//         }
-//     }
-
-//     // build tree
-//     while (count > 1) {
-//         Node* left = &nodes[count - 1]; //call pop on priority queue to get two least frequency nodes
-//         Node* right = &nodes[count - 2]; 
-
-//         //malloc new node and then set left and right tree
-//         // make sum node
-//         Node* new_node = &nodes[count];
-//         new_node->letter_name = NULL; 
-//         new_node->frq = left->frq + right->frq;
-//         new_node->left = left;
-//         new_node->right = right;
-
-//         count--;
-
-//         //insert
-//         int c = count -1;  
-//         while (c >= 0 && nodes[c].frq > new_node->frq) {
-//             nodes[c + 1] = nodes[c];
-//             c--;
-//         }
-//         nodes[c + 1] = *new_node;
-//         count++;
-//     }
-// }
-  
-
-// while (phtree->size() > 1) {
-
-//     htree_node *top_node1 = phtree->top();
-
-//     phtree->pop();
-
-//     htree_node *top_node2 = phtree->top();
-
-//     phtree->pop();
-
- 
-
-//     htree_node *new_node = new_htree_node(-1, top_node1->cnt + top_node2->cnt);
-
-//     new_node->left = top_node1;
-
-//     new_node->right = top_node2;
-
-//     phtree->push(new_node);
