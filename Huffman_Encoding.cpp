@@ -29,7 +29,7 @@ struct node{
 };
 typedef struct node Node;
 
-void record_letters(const char *string, int ascii_letters[]);
+void record_letters(char *string, int ascii_letters[]);
 void make_queue(std::priority_queue<Node> &tree, int *ascii_letters);
 Node* build_tree(std::priority_queue<Node> &tree);
 void assign_encode_helper(Node *root, unsigned int encode, int length);
