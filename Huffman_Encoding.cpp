@@ -235,57 +235,8 @@ Node* find_node(Node* root, char letter) {
     return node;
 }
 
-void compress(FILE *input, Node* root, const char* output_filename) {
-    FILE *output = fopen(output_filename, "wb");
-    if (output == NULL) {
-        printf("Error opening output file\n");
-        return;
-    }
-
-    char line[MAXLENGTH];
-    unsigned int buffer = 0;
-    int bits_in_buffer = 0;
-
-    while (fgets(line, sizeof(line), input)) {
-        int index = 0;
-        char letter;
-        Node* node;
-
-        while (line[index] != '\0') {
-            letter = line[index];
-            node = find_node(root, letter);
-            if (node) {
-                buffer = (buffer << node->encode_length) | node->encode;
-                bits_in_buffer += node->encode_length;
-
-                while (bits_in_buffer >= 8) {
-                    unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
-                    fwrite(&byte, 1, 1, output);
-                    bits_in_buffer -= 8;
-                }
-            }
-            index++;
-        }
-    }
-
-    if (bits_in_buffer > 0) {
-        unsigned char byte = buffer << (8 - bits_in_buffer);
-        fwrite(&byte, 1, 1, output);
-    }
-
-    fclose(output);
-}
-
 /* store_encode and its helper creates 2D array where index is a char's 
 ascii value, first col is encode, second is encode length*/
-void store_encodings(Node* root, int encodings[128][2]) {
-    for (int i = 0; i < 128; ++i) {
-        encodings[i][0] = 0;   // Initialize encode
-        encodings[i][1] = 0;   // Initialize encode length
-    }
-    store_encodings_helper(root, encodings);
-}
-
 void store_encodings_helper(Node* root, int encodings[128][2]) {
     if (!root) return;
 
@@ -303,27 +254,39 @@ void store_encodings_helper(Node* root, int encodings[128][2]) {
     }
 }
 
-void compress(FILE *input, int encodings[128][2], const char* output_filename) {
+void store_encodings(Node* root, int encodings[128][2]) {
+    for (int i = 0; i < 128; ++i) {
+        encodings[i][0] = 0;   // Initialize encode
+        encodings[i][1] = 0;   // Initialize encode length
+    }
+    store_encodings_helper(root, encodings);
+}
+
+void compress(FILE *input, int encodings[128][2], const char* output_filename, int ascii_letters[128]) {
     FILE *output = fopen(output_filename, "wb");
     if (output == NULL) {
         printf("Error opening output file\n");
         return;
     }
 
-     // Allocate buffer memory
-    char *buffer = (char *)malloc(MAXLENGTH);
-    if (buffer == NULL) {
+    //store the ascii_letters array
+    unsigned char array_size = 128; 
+    fwrite(&array_size, 1, 1, output);  // write size asfirst byte
+    fwrite(ascii_letters, sizeof(int), 128, output);  // write ascii_letters array next
+
+    //allocate buffer memory
+    char *data = (char *)malloc(MAXLENGTH); //buffer 
+    if (data == NULL) {
         printf("Error allocating memory\n");
         fclose(output);
         return;
     }
-
-    size_t buffer_index = 0;
-    unsigned int bit_buffer = 0;
-    char line[MAXLENGTH];
+    int data_index = 0; //tracks current position in buffer
+    unsigned int buffer = 0; //stores bits before writing to buffer
+    char line[MAXLENGTH]; //buffer that holds each lineof text in input 
     int bits_in_buffer = 0; //counts bits in buffer
 
-    //read input liine by line
+    //read input line by line
     while (fgets(line, sizeof(line), input)) {
         int index = 0;
         char letter;
@@ -334,23 +297,23 @@ void compress(FILE *input, int encodings[128][2], const char* output_filename) {
             int encode = encodings[(int)letter][0]; // get encode
             int length = encodings[(int)letter][1]; //get encode_length
 
-            //add line[i]'s encoding to buffer
-            bit_buffer = (bit_buffer << length) | encode;
-            bits_in_buffer += length; //bits_in_buffer updated w/ length
+            //add line[i]'s encoding to bit_buffer
+            buffer = (buffer << length) | encode;
+            bits_in_buffer += length; //bits_in_buffer updated w/ length of bit_buffer
 
             //write to file byte by byte until bits_in_buffer is less than 8
             while (bits_in_buffer >= 8) {
-                /* byte stores 8 bits from buffer and buffer is shifted accordingly;
-                buffer keeps any bits that do not fit into the 8 bytes for 
+                /* byte stores 8 bits from bit_buffer, bit_ buffer shifted accordingly;
+                bit_buffer keeps any bits that do not fit into the 8 bytes for 
                 the next iteration */
-                unsigned char byte = (bit_buffer >> (bits_in_buffer - 8)) & 0xFF;
-                buffer[buffer_index++] = byte;
+                unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
+                data[data_index++] = byte; //adds a byte to buffer
                 bits_in_buffer -= 8; //update bits_in_buffer
 
                 //write entire buffer to file
-                if (buffer_index >= MAXLENGTH) {
-                    fwrite(buffer, 1, buffer_index, output);
-                    buffer_index = 0;
+                if (data_index >= MAXLENGTH) {
+                    fwrite(data, 1, data_index, output);
+                    data_index = 0;
                 }
             }
             index++;
@@ -359,26 +322,37 @@ void compress(FILE *input, int encodings[128][2], const char* output_filename) {
 
     //handles last byte; no extra 0's
     if (bits_in_buffer > 0) {
-        unsigned char byte = bit_buffer << (8 - bits_in_buffer);
-        buffer[buffer_index++] = byte;
+        unsigned char byte = buffer << (8 - bits_in_buffer);
+        data[data_index++] = byte;
+        data[data_index++] = bits_in_buffer; //stores num valid bits in last byte
+    }
+    else {
+        data[data_index++] = 8;
+    }
+     
+    //writes the remaining buffer to data
+    if (data_index > 0) {
+        fwrite(data, 1, data_index, output);
     }
 
-    if (buffer_index > 0) {
-        fwrite(buffer, 1, buffer_index, output);
-    }
-
-    free(buffer);
+    free(data);
     fclose(output);
 }
 
-
-
+/* note: want to avoid code duplication for node traversal, write helper */
 void decompress(const char* input_filename, Node* root, const char* output_filename) {
     FILE *input = fopen(input_filename, "rb");
     if (input == NULL) {
         printf("Error opening input file\n");
         return;
     }
+ 
+    /* get last file byte, which stores number of valid bytes in last encode byte */
+    fseek(input, -1, SEEK_END); //go to last byte of file
+    long file_size = ftell(input); // get file size
+    unsigned char valid_bits;
+    fread(&valid_bits, 1, 1, input); // read num in last byte
+    fseek(input, 0, SEEK_SET); // back to the beginning of file
 
     FILE *output = fopen(output_filename, "w");
     if (output == NULL) {
@@ -387,17 +361,23 @@ void decompress(const char* input_filename, Node* root, const char* output_filen
         return;
     }
 
+    // read ascii_letters array size and skip to encode part of file
+    unsigned char array_size;
+    fread(&array_size, 1, 1, input);
+    fseek(input, array_size * sizeof(int), SEEK_CUR);
+
     unsigned int buffer = 0; //buffer 
     int bits_in_buffer = 0; //counts bits in buffer
     unsigned char byte;
     Node* current = root; 
 
-    //read byte by byte from input file
-    while (fread(&byte, 1, 1, input) == 1) {
+    //read byte by byte from input file until last 2 bytes
+    while (ftell(input) < file_size - 1) {
+        fread(&byte, 1, 1, input);
         buffer = (buffer << 8) | byte; //add a byte to buffer
         bits_in_buffer += 8;
 
-        //read but by bit in buffer
+        //read bit by bit in buffer
         while (bits_in_buffer > 0) {
             int bit = (buffer >> (bits_in_buffer - 1)) & 1;
             bits_in_buffer--;
@@ -417,11 +397,34 @@ void decompress(const char* input_filename, Node* root, const char* output_filen
         }
     }
 
+/* reads rest of input, making sure to stop at the right number of valid bites in 
+last byte, as found above in valid_bits */
+fread(&byte, 1, 1, input);
+buffer = (buffer << 8) | byte;
+bits_in_buffer += valid_bits;
+while (bits_in_buffer > 0) {
+    int bit = (buffer >> (bits_in_buffer - 1)) & 1;
+    bits_in_buffer--;
+
+    if (bit == 0) {
+        current = current->left;
+    } else {
+        current = current->right;
+    }
+
+    if (current->left == NULL && current->right == NULL) {
+        fputc(current->letter_name, output);
+        current = root;
+    }
+}
+
+
     fclose(input);
     fclose(output);
 }
 
-double calculate_compression_speed(long original_size, double compression_time) {
+
+double calc_speed(long original_size, double compression_time) {
     if (compression_time == 0) {
         return 0;
     }
