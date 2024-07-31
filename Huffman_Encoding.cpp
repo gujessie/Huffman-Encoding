@@ -34,7 +34,7 @@ void make_queue(std::priority_queue<Node> &tree, int *ascii_letters);
 Node* build_tree(std::priority_queue<Node> &tree);
 void assign_encode_helper(Node *root, unsigned int encode, int length);
 void assign_encode(Node *root);
-void compress(FILE *input, Node* root, const char* output_filename);
+void compress(FILE *input, int encodings[128][2], const char* output_filename, int ascii_letters[128]);
 void decompress(const char* input_filename, Node* root, const char* output_filename);
 void free_tree(Node* root);
 Node* find_node(Node* root, char letter);
@@ -75,9 +75,11 @@ int main (int argc, char *argv[])
     make_queue(tree, ascii_letters);
     Node* root = build_tree(tree);
     assign_encode(root);
+    int encodings[128][2];
+    store_encodings(root, encodings);
 
     clock_t start = clock();
-    compress(input, root, argv[2]);
+    compress(input, encodings, argv[2], ascii_letters);
     clock_t end = clock();
 
     double time = (double)(end - start) / CLOCKS_PER_SEC;
