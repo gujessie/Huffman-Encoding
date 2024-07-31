@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <iostream>
 
-#define MAXLENGTH 1000000
+#define MAXLENGTH 128 * 1024 * 1024
 
 
 /* struct that represts a letter */
@@ -40,6 +40,7 @@ void free_tree(Node* root);
 Node* find_node(Node* root, char letter);
 void store_encodings(Node* root, int encodings[128][2]);
 void assign_encode_helper(Node *root, unsigned int encode, int length);
+double calc_speed(long input_size, double time);
 
 int main (int argc, char *argv[])
 {
@@ -60,6 +61,11 @@ int main (int argc, char *argv[])
         return 1;
     }
     
+    //get input file size
+    fseek(input, 0, SEEK_END);
+    long input_size = ftell(input);
+    fseek(input, 0, SEEK_SET);
+
     char line[MAXLENGTH];
     while (fgets(line, sizeof(line), input)) {
         record_letters(line, ascii_letters);
@@ -69,7 +75,13 @@ int main (int argc, char *argv[])
     make_queue(tree, ascii_letters);
     Node* root = build_tree(tree);
     assign_encode(root);
+
+    clock_t start = clock();
     compress(input, root, argv[2]);
+    clock_t end = clock();
+
+    double time = (double)(end - start) / CLOCKS_PER_SEC;
+    double comp_speed = calc_speed(input_size, time);
     fclose(input);
 
     decompress(argv[2], root, argv[3]);
@@ -298,8 +310,17 @@ void compress(FILE *input, int encodings[128][2], const char* output_filename) {
         return;
     }
 
+     // Allocate buffer memory
+    char *buffer = (char *)malloc(MAXLENGTH);
+    if (buffer == NULL) {
+        printf("Error allocating memory\n");
+        fclose(output);
+        return;
+    }
+
+    size_t buffer_index = 0;
+    unsigned int bit_buffer = 0;
     char line[MAXLENGTH];
-    unsigned int buffer = 0; //buffer holds up to 32 bits
     int bits_in_buffer = 0; //counts bits in buffer
 
     //read input liine by line
@@ -314,7 +335,7 @@ void compress(FILE *input, int encodings[128][2], const char* output_filename) {
             int length = encodings[(int)letter][1]; //get encode_length
 
             //add line[i]'s encoding to buffer
-            buffer = (buffer << length) | encode;
+            bit_buffer = (bit_buffer << length) | encode;
             bits_in_buffer += length; //bits_in_buffer updated w/ length
 
             //write to file byte by byte until bits_in_buffer is less than 8
@@ -322,9 +343,15 @@ void compress(FILE *input, int encodings[128][2], const char* output_filename) {
                 /* byte stores 8 bits from buffer and buffer is shifted accordingly;
                 buffer keeps any bits that do not fit into the 8 bytes for 
                 the next iteration */
-                unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
-                fwrite(&byte, 1, 1, output);
+                unsigned char byte = (bit_buffer >> (bits_in_buffer - 8)) & 0xFF;
+                buffer[buffer_index++] = byte;
                 bits_in_buffer -= 8; //update bits_in_buffer
+
+                //write entire buffer to file
+                if (buffer_index >= MAXLENGTH) {
+                    fwrite(buffer, 1, buffer_index, output);
+                    buffer_index = 0;
+                }
             }
             index++;
         }
@@ -332,10 +359,15 @@ void compress(FILE *input, int encodings[128][2], const char* output_filename) {
 
     //handles last byte; no extra 0's
     if (bits_in_buffer > 0) {
-        unsigned char byte = buffer << (8 - bits_in_buffer);
-        fwrite(&byte, 1, 1, output);
+        unsigned char byte = bit_buffer << (8 - bits_in_buffer);
+        buffer[buffer_index++] = byte;
     }
 
+    if (buffer_index > 0) {
+        fwrite(buffer, 1, buffer_index, output);
+    }
+
+    free(buffer);
     fclose(output);
 }
 
@@ -387,4 +419,11 @@ void decompress(const char* input_filename, Node* root, const char* output_filen
 
     fclose(input);
     fclose(output);
+}
+
+double calculate_compression_speed(long original_size, double compression_time) {
+    if (compression_time == 0) {
+        return 0;
+    }
+    return original_size / compression_time;
 }
