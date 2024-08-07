@@ -11,7 +11,7 @@
 #define MAXLENGTH 128 * 1024 * 1024
 
 
-/* struct that represts a letter */
+/* struct that represents a letter */
 struct node{
    struct node *left;
    struct node *right;
@@ -34,8 +34,8 @@ void make_queue(std::priority_queue<Node> &tree, int *ascii_letters);
 Node* build_tree(std::priority_queue<Node> &tree);
 void assign_encode_helper(Node *root, unsigned int encode, int length);
 void assign_encode(Node *root);
-void compress(FILE *input, int encodings[128][2], const char* output_filename, int ascii_letters[128]);
-void decompress(const char* input_filename, Node* root, const char* output_filename);
+void compress(const char* src, char* dest, int fsize, int* destsize, int encodings[128][2]);
+void decompress(const char* src, char* dest, Node* root, int fsize);
 void free_tree(Node* root);
 Node* find_node(Node* root, char letter);
 void store_encodings(Node* root, int encodings[128][2]);
@@ -46,56 +46,160 @@ int main (int argc, char *argv[])
 {
     int ascii_letters[128] = { 0 };
     Node letters[128];
+    long fsize;
     std::priority_queue<Node> tree;
 
-    
-    if ( argc != 2 ) 
-    {
+    if ( argc != 3 ) {
+        fprintf(stderr, "error in arguments");
         return 1;
     }
    
-    FILE *input = fopen( argv[1], "r" );
+   //opening input file
+    FILE *input = fopen(argv[1], "r");
     if (NULL == input) { 
-        printf("Error opening file\n");
-        exit(EXIT_FAILURE);
+        perror("Error opening input file");
         return 1;
     }
     
     //get input file size
     fseek(input, 0, SEEK_END);
-    long input_size = ftell(input);
+    fsize = ftell(input);
     fseek(input, 0, SEEK_SET);
 
+    //record frequency of letters
     char line[MAXLENGTH];
     while (fgets(line, sizeof(line), input)) {
         record_letters(line, ascii_letters);
     }
     fseek(input, 0, SEEK_SET);
 
+    //make tree and encodings array
     make_queue(tree, ascii_letters);
     Node* root = build_tree(tree);
     assign_encode(root);
     int encodings[128][2];
     store_encodings(root, encodings);
 
+    /* compression */
+
+
+    //open output file 
+    FILE *output = fopen(argv[2], "wb");
+    if (output == NULL) {
+        perror("Error opening output file");
+        fclose(input);
+        return 1;
+    }
+
+    //intitialize src buffer
+    char *src = (char *)malloc(fsize + 1);
+    if (NULL == src) {
+        printf("Error allocating memory for src\n");
+        fclose(input);
+        fclose(output);
+        return 1;
+    }
+    fread(src, 1, fsize, input);
+    fclose(input);
+    src[fsize] = '\0';
+
+    //intialize dest buffer
+    char *dest = (char *)malloc(fsize + 1); //create buffer 
+    if (NULL == dest) {
+       perror("Error allocating memory for dest \n");
+        fclose(output);
+        free(src);
+        return 1;
+    }
+
+    //store the ascii_letters array in output file
+    unsigned char array_size = 128; 
+    fwrite(&array_size, 1, 1, output);  // write size as first byte
+    fwrite(ascii_letters, sizeof(int), 128, output);  // write ascii_letters array next
+
+    int destsize; //size of dest in bits
+    //timer for compression + compress function
     clock_t start = clock();
-    compress(input, encodings, argv[2], ascii_letters);
+    compress(src, dest, fsize, &destsize, encodings);
     clock_t end = clock();
 
-    double time = (double)(end - start) / CLOCKS_PER_SEC;
-    double comp_speed = calc_speed(input_size, time);
-    fclose(input);
+    //write compressed data to ouput file
+    fwrite(dest, 1, (destsize + 7) / 8, output);
 
-    decompress(argv[2], root, argv[3]);
+    fclose(output);
+    free(src);
+    free(dest);
+
+    //calculate compressions speed
+    double time = (double)(end - start) / CLOCKS_PER_SEC;
+    double comp_speed = calc_speed(fsize, time);
+
+
+    /* decompression */
+
+    // Read compressed data from file into a string
+    FILE *input = fopen(argv[2], "rb");
+    if (input == NULL) {
+        printf("Error opening file\n");
+        return 1;
+    }
+
+    fseek(input, 0, SEEK_END);
+    long compressed_size = ftell(input);
+    fseek(input, 0, SEEK_SET);
+
+    char *compressed_data = (char *)malloc(compressed_size + 1);
+    if (NULL == compressed_data) {
+        printf("Error allocating memory\n");
+        fclose(input);
+        return 1;
+    }
+
+
+    // read ascii_letters array size and skip to encode part of file
+    unsigned char array_size;
+    fread(&array_size, 1, 1, input);
+    fseek(input, array_size * sizeof(int), SEEK_CUR);
+
+    //read compressed data from file 
+    fread(compressed_data, compressed_size, 1, input);
+    fclose(input);
+    compressed_data[compressed_size] = '\0';
+
+    // Initialize decompressed data buffer
+    char *decompressed_data = (char *)malloc(fsize + 1);
+    if (NULL == decompressed_data) {
+        printf("Error allocating memory\n");
+        free(compressed_data);
+        return 1;
+    }
+
+    // Decompress
+    decompress(compressed_data, decompressed_data, root, fsize);
+
+    // Write decompressed data to output file
+    FILE *output = fopen(argv[3], "w");
+    if (output == NULL) {
+        printf("Error opening file\n");
+        free(compressed_data);
+        free(decompressed_data);
+        return 1;
+    }
+    fwrite(decompressed_data, 1, strlen(decompressed_data), output);
+    fclose(output);
+
+    free(compressed_data);
+    free(decompressed_data);
     free_tree(root);
 
     return 0;
 }
 
 
+
+
 /* iterates through a string and records the frequncy of the characters by 
 incrementing the value corresponding index (ascii value) */
-
 void record_letters(char *string, int ascii_letters[]){
     int index = 0, ascii_value;
     char letter;
@@ -109,7 +213,7 @@ void record_letters(char *string, int ascii_letters[]){
 }
 
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
-void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change function name, change ascii_letters parameter to pointer
+void make_queue(std::priority_queue<Node> &tree, int *ascii_letters) { //change ascii_letters parameter to pointer
     // Insert nodes 
 
 
@@ -179,7 +283,6 @@ Node* build_tree(std::priority_queue<Node> &tree){
     return NULL;
 }
 
-
 //assigns the binary code to each letter
 void assign_encode_helper(Node *root, unsigned int encode, int length) {
     if (NULL == root) return;
@@ -201,8 +304,6 @@ void assign_encode_helper(Node *root, unsigned int encode, int length) {
 void assign_encode(Node *root) {
     assign_encode_helper(root, 0, 0);
 }
-
-
 
 void free_tree(Node* root) { 
     if (!root) return;
@@ -264,167 +365,82 @@ void store_encodings(Node* root, int encodings[128][2]) {
     store_encodings_helper(root, encodings);
 }
 
-void compress(FILE *input, int encodings[128][2], const char* output_filename, int ascii_letters[128]) {
-    FILE *output = fopen(output_filename, "wb");
-    if (output == NULL) {
-        printf("Error opening output file\n");
-        return;
-    }
-
-    //store the ascii_letters array
-    unsigned char array_size = 128; 
-    fwrite(&array_size, 1, 1, output);  // write size asfirst byte
-    fwrite(ascii_letters, sizeof(int), 128, output);  // write ascii_letters array next
-
-    //allocate buffer memory
-    char *data = (char *)malloc(MAXLENGTH); //buffer 
-    if (data == NULL) {
-        printf("Error allocating memory\n");
-        fclose(output);
-        return;
-    }
-    int data_index = 0; //tracks current position in buffer
+/* note: return 1 if error and check in main*/
+void compress(const char* src, char* dest, int fsize, int* destsize, int encodings[128][2]) {
+    int dest_index = 0; //tracks current position in buffer
     unsigned int buffer = 0; //stores bits before writing to buffer
-    char line[MAXLENGTH]; //buffer that holds each lineof text in input 
+    int src_index = 0; //tracks current position in src 
     int bits_in_buffer = 0; //counts bits in buffer
+    char letter;
+    *destsize = 0; //size of dest in bits
 
-    //read input line by line
-    while (fgets(line, sizeof(line), input)) {
-        int index = 0;
-        char letter;
+    //read each char in line 
+    while (src_index < fsize) {
+        letter = src[src_index];
+        int encode = encodings[(int)letter][0]; // get encode
+        int length = encodings[(int)letter][1]; //get encode_length
 
-        //read each char in line 
-        while (line[index] != '\0') {
-            letter = line[index];
-            int encode = encodings[(int)letter][0]; // get encode
-            int length = encodings[(int)letter][1]; //get encode_length
+        //add line[i]'s encoding to bit_buffer
+        buffer = (buffer << length) | encode;
+        bits_in_buffer += length; //bits_in_buffer updated w/ length of bit_buffer
 
-            //add line[i]'s encoding to bit_buffer
-            buffer = (buffer << length) | encode;
-            bits_in_buffer += length; //bits_in_buffer updated w/ length of bit_buffer
-
-            //write to file byte by byte until bits_in_buffer is less than 8
-            while (bits_in_buffer >= 8) {
-                /* byte stores 8 bits from bit_buffer, bit_ buffer shifted accordingly;
-                bit_buffer keeps any bits that do not fit into the 8 bytes for 
-                the next iteration */
-                unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
-                data[data_index++] = byte; //adds a byte to buffer
-                bits_in_buffer -= 8; //update bits_in_buffer
-
-                //write entire buffer to file
-                if (data_index >= MAXLENGTH) {
-                    fwrite(data, 1, data_index, output);
-                    data_index = 0;
-                }
-            }
-            index++;
+        //write to file byte by byte until bits_in_buffer is less than 8
+        while (bits_in_buffer >= 8) {
+            /* byte stores 8 bits from bit_buffer, bit_ buffer shifted accordingly;
+            bit_buffer keeps any bits that do not fit into the 8 bytes for 
+            the next iteration */
+            unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
+            dest[dest_index++] = byte; //adds a byte to buffer
+            bits_in_buffer -= 8; //update bits_in_buffer
+            *destsize += 8;
         }
+        src_index++;
     }
 
     //handles last byte; no extra 0's
     if (bits_in_buffer > 0) {
         unsigned char byte = buffer << (8 - bits_in_buffer);
-        data[data_index++] = byte;
-        data[data_index++] = bits_in_buffer; //stores num valid bits in last byte
+        dest[dest_index++] = byte;
+        *destsize += bits_in_buffer;
     }
-    else {
-        data[data_index++] = 8;
-    }
-     
-    //writes the remaining buffer to data
-    if (data_index > 0) {
-        fwrite(data, 1, data_index, output);
-    }
-
-    free(data);
-    fclose(output);
+    dest[dest_index] = '\0';
 }
 
 /* note: want to avoid code duplication for node traversal, write helper */
-void decompress(const char* input_filename, Node* root, const char* output_filename) {
-    FILE *input = fopen(input_filename, "rb");
-    if (input == NULL) {
-        printf("Error opening input file\n");
-        return;
-    }
- 
-    /* get last file byte, which stores number of valid bytes in last encode byte */
-    fseek(input, -1, SEEK_END); //go to last byte of file
-    long file_size = ftell(input); // get file size
-    unsigned char valid_bits;
-    fread(&valid_bits, 1, 1, input); // read num in last byte
-    fseek(input, 0, SEEK_SET); // back to the beginning of file
+void decompress(const char* src, char* dest, Node* root, int fsize) {
+    Node* current = root;
+    unsigned int buffer = 0;
+    int bits_in_buffer = 0;
+    int src_index = 0;
+    int dest_index = 0;
 
-    FILE *output = fopen(output_filename, "w");
-    if (output == NULL) {
-        printf("Error opening output file\n");
-        fclose(input);
-        return;
-    }
-
-    // read ascii_letters array size and skip to encode part of file
-    unsigned char array_size;
-    fread(&array_size, 1, 1, input);
-    fseek(input, array_size * sizeof(int), SEEK_CUR);
-
-    unsigned int buffer = 0; //buffer 
-    int bits_in_buffer = 0; //counts bits in buffer
-    unsigned char byte;
-    Node* current = root; 
-
-    //read byte by byte from input file until last 2 bytes
-    while (ftell(input) < file_size - 1) {
-        fread(&byte, 1, 1, input);
-        buffer = (buffer << 8) | byte; //add a byte to buffer
+    while (dest_index < fsize) {
+        // Load bits from src into buffer
+        unsigned char byte = src[src_index++];
+        buffer = (buffer << 8) | byte;
         bits_in_buffer += 8;
 
-        //read bit by bit in buffer
+        // Decode bits into characters
         while (bits_in_buffer > 0) {
             int bit = (buffer >> (bits_in_buffer - 1)) & 1;
             bits_in_buffer--;
 
-            //traverse tree according to bits
             if (bit == 0) {
                 current = current->left;
             } else {
                 current = current->right;
             }
 
-            //if at a leaf node, write character to file
             if (current->left == NULL && current->right == NULL) {
-                fputc(current->letter_name, output);
-                current = root; //reset tree
+                dest[dest_index++] = current->letter_name;
+                current = root;
             }
         }
     }
 
-/* reads rest of input, making sure to stop at the right number of valid bites in 
-last byte, as found above in valid_bits */
-fread(&byte, 1, 1, input);
-buffer = (buffer << 8) | byte;
-bits_in_buffer += valid_bits;
-while (bits_in_buffer > 0) {
-    int bit = (buffer >> (bits_in_buffer - 1)) & 1;
-    bits_in_buffer--;
-
-    if (bit == 0) {
-        current = current->left;
-    } else {
-        current = current->right;
-    }
-
-    if (current->left == NULL && current->right == NULL) {
-        fputc(current->letter_name, output);
-        current = root;
-    }
+    // Null-terminate the output string
+    dest[dest_index] = '\0';
 }
-
-
-    fclose(input);
-    fclose(output);
-}
-
 
 double calc_speed(long original_size, double compression_time) {
     if (compression_time == 0) {
@@ -432,3 +448,5 @@ double calc_speed(long original_size, double compression_time) {
     }
     return original_size / compression_time;
 }
+
+
