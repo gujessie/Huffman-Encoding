@@ -138,15 +138,15 @@ int main (int argc, char *argv[])
     /* decompression */
 
     // Read compressed data from file into a string
-    FILE *input = fopen(argv[2], "rb");
-    if (input == NULL) {
+    FILE *comp_input = fopen(argv[2], "rb");
+    if (comp_input == NULL) {
         printf("Error opening file\n");
         return 1;
     }
 
-    fseek(input, 0, SEEK_END);
-    long compressed_size = ftell(input);
-    fseek(input, 0, SEEK_SET);
+    fseek(comp_input, 0, SEEK_END);
+    long compressed_size = ftell(comp_input);
+    fseek(comp_input, 0, SEEK_SET);
 
     char *compressed_data = (char *)malloc(compressed_size + 1);
     if (NULL == compressed_data) {
@@ -157,13 +157,12 @@ int main (int argc, char *argv[])
 
 
     // read ascii_letters array size and skip to encode part of file
-    unsigned char array_size;
     fread(&array_size, 1, 1, input);
     fseek(input, array_size * sizeof(int), SEEK_CUR);
 
     //read compressed data from file 
-    fread(compressed_data, compressed_size, 1, input);
-    fclose(input);
+    fread(compressed_data, compressed_size, 1, comp_input);
+    fclose(comp_input);
     compressed_data[compressed_size] = '\0';
 
     // Initialize decompressed data buffer
@@ -178,15 +177,15 @@ int main (int argc, char *argv[])
     decompress(compressed_data, decompressed_data, root, fsize);
 
     // Write decompressed data to output file
-    FILE *output = fopen(argv[3], "w");
-    if (output == NULL) {
+    FILE *decomp_output = fopen(argv[3], "w");
+    if (decomp_output == NULL) {
         printf("Error opening file\n");
         free(compressed_data);
         free(decompressed_data);
         return 1;
     }
     fwrite(decompressed_data, 1, strlen(decompressed_data), output);
-    fclose(output);
+    fclose(decomp_output);
 
     free(compressed_data);
     free(decompressed_data);
