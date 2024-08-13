@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -Wall -Wextra -O2
+CXXFLAGS = -Wall -Wextra -O0 //use 
 TARGET = huffman
 SRCS = Huffman_Encoding.cpp
 OBJS = $(SRCS:.cpp=.o)
