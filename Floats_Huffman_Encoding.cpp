@@ -113,14 +113,14 @@ void quantize(float* data, int size, int num_buckets, float* quantized_data) {
 
     // calc the interval and bucket width
     float interval = max - min;
-    float bucket_width = interval / num_buckets;
+    float bucket_size = interval / num_buckets;
 
     // Assign each data point to a bucket
     for (int i = 0; i < size; i++) {
-        float bucket_index = (data[i] - min) / bucket_width;
+        float bucket_val = (data[i] - min) / bucket_size;
 
         // Store the bucket index as a float
-        quantized_data[i] = bucket_index;
+        quantized_data[i] = bucket_val;
     }
 }
 
