@@ -67,10 +67,19 @@ int main (int argc, char *argv[])
     fseek(input, 0, SEEK_SET);
 
     //record frequency of letters
-    char line[MAXLENGTH];
-    while (fgets(line, sizeof(line), input)) {
-        record_letters(line, ascii_letters);
+   
+    //intitialize src buffer
+    char *src = (char *)malloc(fsize);
+    if (NULL == src) {
+        printf("Error allocating memory for src\n");
+        fclose(input);
+        return 1;
     }
+    fread(src, 1, fsize, input);
+    fclose(input);
+
+   //record letter frqs
+    record_letters(src, ascii_letters);
     fseek(input, 0, SEEK_SET);
 
     //make tree and encodings array
