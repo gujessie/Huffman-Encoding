@@ -13,8 +13,8 @@
 
 /* struct that represents a letter */
 struct node{
-   float val;
-   float frq;
+   int index;
+   int frq;
    struct node *left;
    struct node *right;
    unsigned int encode;
@@ -30,9 +30,9 @@ struct node{
 };
 typedef struct node Node;
 
-void quantize(float* data, int size, int num_buckets, float* quantized_data);
-void record_frequencies(const float* quantized_data, int fsize, int num_buckets, float** frqs);
-void make_queue(std::priority_queue<Node> &tree, float **frqs, int num_buckets);
+void quantize(float* data, int size, int num_buckets, int* quantized_data);
+void record_frequencies(const int* quantized_data, int fsize, int num_buckets, int* frqs);
+void make_queue(std::priority_queue<Node> &tree, int *frqs, int num_buckets);
 Node* build_tree(std::priority_queue<Node> &tree);
 
 
@@ -66,7 +66,7 @@ int main (int argc, char *argv[])
 
      // Quantization
     const int num_buckets = 10; // can change this number
-    float *quantized_data = (float *)malloc(fsize);
+    int *quantized_data = (int *)malloc(fsize);
     if (NULL == quantized_data) {
         printf("Error allocating memory\n");
         free(data);
@@ -74,10 +74,14 @@ int main (int argc, char *argv[])
     }
     quantize(data, fsize / sizeof(float), num_buckets, quantized_data);
 
-    float **frqs = (float **)malloc(num_buckets * sizeof(float *));
-    for (int i = 0; i < num_buckets; ++i) {
-        frqs[i] = (float *)malloc(2 * sizeof(float)); // bucket_val, frq
+    int *frqs = (int *)malloc(num_buckets * sizeof(int *));
+    if (NULL == frqs) {
+        printf("Error allocating memory\n");
+        free(data);
+        free(quantized_data);
+        return 1;
     }
+
     record_frequencies(quantized_data, fsize / sizeof(float), num_buckets, frqs);
 
     std::priority_queue<Node> tree;
@@ -102,7 +106,7 @@ int main (int argc, char *argv[])
 }
 
 
-void quantize(float* data, int size, int num_buckets, float* quantized_data) {
+void quantize(float* data, int size, int num_buckets, int* quantized_data) {
     // Find min and max values in data
     float min = data[0];
     float max = data[0];
@@ -117,38 +121,36 @@ void quantize(float* data, int size, int num_buckets, float* quantized_data) {
 
     // Assign each data point to a bucket
     for (int i = 0; i < size; i++) {
-        float bucket_val = (data[i] - min) / bucket_size;
+        int bucket = (int)((data[i] - min) / bucket_size);
+        if (bucket == num_buckets) {
+            bucket--;  // 
+        }
 
-        // Store the bucket index as a float
-        quantized_data[i] = bucket_val;
+        // Store the bucket index
+        quantized_data[i] = bucket;
     }
 }
 
-void record_frequencies(const float* quantized_data, int fsize, int num_buckets, float** frqs) {
-    // make frq array 
-    for (int i = 0; i < num_buckets; i++) {
-        frqs[i][0] = i; // Bucket val
-        frqs[i][1] = 0; // frq
-    }
+void record_frequencies(const int* quantized_data, int fsize, int num_buckets, int* frqs) {
 
     // Count frqs
     for (int i = 0; i < fsize; i++) {
-        int bucket = (int)(quantized_data[i]);
+        int bucket = quantized_data[i];
         if (bucket >= 0 && bucket < num_buckets) {
-            frqs[bucket][1]++; // Increment the frequency for the bucket
+            frqs[bucket]++; // Increment the frequency for the bucket
         }
     }
 }
 
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
-void make_queue(std::priority_queue<Node> &tree, float **frqs, int num_buckets) {
+void make_queue(std::priority_queue<Node> &tree, int *frqs, int num_buckets) {
     for (int i = 0; i < num_buckets; ++i) {
-        if (frqs[i][1] > 0) { // Check if the bucket has a frequency greater than 0
+        if (frqs[i] > 0) { // Check if the bucket has a frequency greater than 0
             Node node;
-            node.frq = frqs[i][1];        // Frequency
-            node.val = frqs[i][0]; // Quantized bucket value
-            node.left = nullptr;
-            node.right = nullptr;
+            node.frq = frqs[i];  // Frequency
+            node.index = i; // Quantized bucket value
+            node.left = NULL;
+            node.right = NULL;
             node.encode = 0;
             node.encode_length = 0;
             tree.push(node);  // Push the node into the priority queue
