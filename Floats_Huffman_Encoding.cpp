@@ -30,11 +30,12 @@ struct node{
 };
 typedef struct node Node;
 
-void quantize(float* data, int size, int num_buckets, int* quantized_data);
-void record_frequencies(const int* quantized_data, int fsize, int num_buckets, int* frqs);
+int quantize(float* src, int size, float error, int* quantized_src);
+void record_frequencies(const int* quantized_src, int fsize, int num_buckets, int* frqs);
 void make_queue(std::priority_queue<Node> &tree, int *frqs, int num_buckets);
 Node* build_tree(std::priority_queue<Node> &tree);
-
+void assign_encode(Node *root);
+void store_encodings_helper(Node* root, int encodings[][2], int num_buckets);
 
 int main (int argc, char *argv[])
 {
@@ -55,87 +56,80 @@ int main (int argc, char *argv[])
     long fsize = ftell(input) / sizeof(float);
     fseek(input, 0, SEEK_SET);
 
-    float *data = (float *)malloc(fsize);
-    if (NULL == data) {
+    float *src = (float *)malloc(fsize);
+    if (NULL == src) {
         printf("Error allocating memory\n");
         fclose(input);
         return 1;
     }
-    fread(data, fsize, 1, input);
+    fread(src, sizeof(float), fsize, input);
     fclose(input);
 
-     // Quantization
-    const int num_buckets = 10; // can change this number
-    int *quantized_data = (int *)malloc(fsize);
-    if (NULL == quantized_data) {
+    /* Quantization */
+    //calculate num buckets
+    const float error = 0.25; // can change this number
+
+    int *quantized_src = (int *)malloc(fsize);
+    if (NULL == quantized_src) {
         printf("Error allocating memory\n");
-        free(data);
+        free(src);
         return 1;
     }
-    quantize(data, fsize / sizeof(float), num_buckets, quantized_data);
+    int num_buckets = quantize(src, fsize, error, quantized_src);
 
     int *frqs = (int *)malloc(num_buckets * sizeof(int *));
     if (NULL == frqs) {
         printf("Error allocating memory\n");
-        free(data);
-        free(quantized_data);
+        free(src);
+        free(quantized_src);
         return 1;
     }
 
-    record_frequencies(quantized_data, fsize / sizeof(float), num_buckets, frqs);
+    record_frequencies(quantized_src, fsize, num_buckets, frqs);
 
     std::priority_queue<Node> tree;
     make_queue(tree, frqs, num_buckets);
     Node* root = build_tree(tree); 
-
-
-    //HOMEWORK
-    //test larger inputs, 100 MB!!!!!!!!!!!!!
-    //floating point data: data generator, generate random floating point data and write to file
-    //  quantization: try to write a quantization routine
-    //  divide min an max into buckets between the interval (btwn min and max) and then do quantization
-    //  in quantization step, convert all values in the bucket into the bucket number
-    //  for example, convert all numbers btwn 0 and 1 into 0 , 1 and 2 into 1
-    //  dont want bucket numbers to be chars so change huffman encoding to work with integers and not characters
-    //  change to work w integers 
-    //  also change file generator 
-    //  input data: floating point data, and will be converted to a series of bucket numbers, then use huffman to encode bucket numbers
-
-    //makefile go back to -o0, makes it easier to debug
- 
+    assign_encode(root);
+    int encodings[num_buckets][2];
+    store_encodings(root, encodings, num_buckets);
+    
 }
 
 
-void quantize(float* data, int size, int num_buckets, int* quantized_data) {
+int quantize(float* src, int size, float error, int* quantized_src) {
     // Find min and max values in data
-    float min = data[0];
-    float max = data[0];
+    float min = src[0];
+    float max = src[0];
     for (int i = 1; i < size; i++) {
-        if (data[i] < min) min = data[i];
-        if (data[i] > max) max = data[i];
+        if (src[i] < min) min = src[i];
+        if (src[i] > max) max = src[i];
     }
 
     // calc the interval and bucket width
     float interval = max - min;
+    int num_buckets = (int)(interval/(error * 2) + 1);
     float bucket_size = interval / num_buckets;
 
     // Assign each data point to a bucket
     for (int i = 0; i < size; i++) {
-        int bucket = (int)((data[i] - min) / bucket_size);
+        int bucket = (int)((src[i] - min) / bucket_size);
         if (bucket == num_buckets) {
             bucket--;  // 
         }
 
         // Store the bucket index
-        quantized_data[i] = bucket;
+        quantized_src[i] = bucket;
     }
+
+    return num_buckets;
 }
 
-void record_frequencies(const int* quantized_data, int fsize, int num_buckets, int* frqs) {
+void record_frequencies(const int* quantized_src, int fsize, int num_buckets, int* frqs) {
 
     // Count frqs
     for (int i = 0; i < fsize; i++) {
-        int bucket = quantized_data[i];
+        int bucket = quantized_src[i];
         if (bucket >= 0 && bucket < num_buckets) {
             frqs[bucket]++; // Increment the frequency for the bucket
         }
@@ -188,6 +182,7 @@ Node* build_tree(std::priority_queue<Node> &tree){
         }
         //creates new node
         new_node->frq = left_node->frq + right_node->frq;
+        new_node->index = -1;
         new_node->left = left_node;
         new_node->right = right_node;
         new_node->encode = 0;
@@ -207,8 +202,49 @@ Node* build_tree(std::priority_queue<Node> &tree){
     return NULL;
 }
 
+//assigns the binary code to each node
+void assign_encode_helper(Node *root, unsigned int encode, int length) {
+    if (NULL == root) return;
 
+    if (root->index >= 0) {
+        root->encode = encode;
+        root->encode_length = length;
+    }
 
+    if (root->left) {
+        assign_encode_helper(root->left, (encode << 1), length + 1);  
+    }
 
+    if (root->right) {
+        assign_encode_helper(root->right, ((encode << 1) | 1), length + 1);  
+    }
+}
 
+void assign_encode(Node *root) {
+    assign_encode_helper(root, 0, 0);
+}
 
+void store_encodings_helper(Node* root, int encodings[][2], int num_buckets) {
+    if (!root) return;
+
+    if (root->index >= 0) {
+        encodings[root->index][0] = root->encode;
+        encodings[root->index][1] = root->encode_length;
+    }
+
+    if (root->left) {
+        store_encodings_helper(root->left, encodings, num_buckets);
+    }
+
+    if (root->right) {
+        store_encodings_helper(root->right, encodings, num_buckets);
+    }
+}
+
+void store_encodings(Node* root, int encodings[][2], int num_buckets) {
+    for (int i = 0; i <= num_buckets; ++i) {
+        encodings[i][0] = 0;   // Initialize encode
+        encodings[i][1] = 0;   // Initialize encode length
+    }
+    store_encodings_helper(root, encodings, num_buckets);
+}
