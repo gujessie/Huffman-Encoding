@@ -7,40 +7,7 @@
 #include <queue>
 #include <cstdlib>
 #include <iostream>
-
-#define MAXLENGTH 128 * 1024 * 1024
-
-
-/* struct that represents a letter */
-struct node{
-   int index;
-   int frq;
-   struct node *left;
-   struct node *right;
-   unsigned int encode;
-   int encode_length;
- 
-
-   bool operator<(const struct node& comp_node) const {
-        if (frq > comp_node.frq) {
-            return true;
-        }
-        return false;
-    }
-};
-typedef struct node Node;
-
-int quantize(float* src, int size, float error, int* quantized_src, float* min, float* bucket_size);
-void record_frequencies(const int* quantized_src, int fsize, int num_buckets, int* frqs);
-void make_queue(std::priority_queue<Node> &tree, int *frqs, int num_buckets);
-Node* build_tree(std::priority_queue<Node> &tree);
-void assign_encode(Node *root);
-void store_encodings_helper(Node* root, int encodings[][2], int num_buckets);
-void compress(const int* src, char* dest, int fsize, int* destsize, int encodings[][2]);
-void reverse_quantize(const int* quantized_data, int size, float min, float bucket_size, float* data);
-void decompress(const char* src, float* dest, Node* root, int num_elements, float min, float bucket_size);
-double calc_speed(long original_size, double compression_time);
-void free_tree(Node* root);
+#include "Floats_Huffman_Encoding.h"
 
 int main (int argc, char *argv[])
 {
@@ -56,9 +23,9 @@ int main (int argc, char *argv[])
         return 1;
     }
     
-    //get input file size
+    //get input file size 
     fseek(input, 0, SEEK_END);
-    long fsize = ftell(input) / sizeof(float);
+    size_t fsize = ftell(input) / sizeof(float); //num elmts in file
     fseek(input, 0, SEEK_SET);
 
     float *src = (float *)malloc(fsize);
@@ -74,16 +41,16 @@ int main (int argc, char *argv[])
     //calculate num buckets
     const float error = 0.25; // can change this number
 
-    float min, bucket_size;
-    int *quantized_src = (int *)malloc(fsize);
+    float min, bucket_size = error * 2;
+    int *quantized_src = (int *)malloc(fsize * sizeof(int));
     if (NULL == quantized_src) {
         printf("Error allocating memory\n");
         free(src);
         return 1;
     }
-    int num_buckets = quantize(src, fsize, error, quantized_src, &min, &bucket_size);
+    int num_buckets = quantize(src, fsize, error, quantized_src, &min);
 
-    int *frqs = (int *)malloc(num_buckets * sizeof(int *));
+    int *frqs = (int *)malloc(num_buckets * sizeof(int));
     if (NULL == frqs) {
         printf("Error allocating memory\n");
         free(src);
@@ -109,7 +76,9 @@ int main (int argc, char *argv[])
     FILE *output = fopen(argv[2], "wb");
     if (output == NULL) {
         perror("Error opening output file");
-        fclose(input);
+        free(src);
+        free(quantized_src);
+        free(frqs);
         return 1;
     }
 
@@ -119,6 +88,8 @@ int main (int argc, char *argv[])
        perror("Error allocating memory for dest \n");
         fclose(output);
         free(src);
+        free(quantized_src);
+        free(frqs);
         return 1;
     }
 
@@ -140,6 +111,8 @@ int main (int argc, char *argv[])
 
     fclose(output);
     free(src);
+    free(quantized_src);
+    free(frqs);
     free(dest);
 
     //calculate compressions speed
@@ -220,7 +193,7 @@ int main (int argc, char *argv[])
 }
 
 
-int quantize(float* src, int size, float error, int* quantized_src, float* min, float* bucket_size) {
+int quantize(float* src, size_t size, float error, int* quantized_src, float* min) {
     // Find min and max values in data
     *min = src[0];
     float max = src[0];
@@ -232,11 +205,11 @@ int quantize(float* src, int size, float error, int* quantized_src, float* min, 
     // calc the interval and bucket width
     float interval = max - *min;
     int num_buckets = (int)(interval/(error * 2) + 1);
-    *bucket_size = interval / num_buckets;
+    float bucket_size = interval / num_buckets;
 
     // Assign each data point to a bucket
     for (int i = 0; i < size; i++) {
-        int bucket = (int)((src[i] - *min) / *bucket_size);
+        int bucket = (int)((src[i] - *min) / bucket_size);
         if (bucket == num_buckets) {
             bucket--;  // 
         }
@@ -381,9 +354,9 @@ void compress(const int* src, char* dest, int fsize, int* destsize, int encoding
 
     // Iterate over each element in the source array
     while (src_index < fsize) {
-        int value = src[src_index];
-        int encode = encodings[value][0]; // Get Huffman encoding for the value
-        int length = encodings[value][1]; // Get the length of the encoding
+        int bucket_index = src[src_index]; //
+        int encode = encodings[bucket_index][0]; // Get Huffman encoding for the value
+        int length = encodings[bucket_index][1]; // Get the length of the encoding
 
         // Add the current value's encoding to the bit buffer
         buffer = (buffer << length) | encode;
