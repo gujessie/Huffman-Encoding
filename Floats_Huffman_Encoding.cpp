@@ -5,6 +5,7 @@
 #include <time.h>
 #include <functional>
 #include <queue>
+#include <vector>
 #include <cstdlib>
 #include <iostream>
 #include "Floats_Huffman_Encoding.h"
@@ -28,7 +29,7 @@ int main (int argc, char *argv[])
     size_t fsize = ftell(input) / sizeof(float); //num elmts in file
     fseek(input, 0, SEEK_SET);
 
-    float *src = (float *)malloc(fsize);
+    float *src = (float *)malloc(fsize * sizeof(float));
     if (NULL == src) {
         printf("Error allocating memory\n");
         fclose(input);
@@ -60,17 +61,15 @@ int main (int argc, char *argv[])
 
     record_frequencies(quantized_src, fsize, num_buckets, frqs);
 
-    std::priority_queue<Node> tree;
+    // Priority queue to build the Huffman tree
+    std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
     make_queue(tree, frqs, num_buckets);
-    Node* root = build_tree(tree); 
+    Node* root = build_tree(tree);
     assign_encode(root);
     int encodings[num_buckets][2];
     store_encodings(root, encodings, num_buckets);
-    
 
-
-    /* compression */
-
+    /* Compression */
 
     //open output file 
     FILE *output = fopen(argv[2], "wb");
@@ -233,91 +232,66 @@ void record_frequencies(const int* quantized_src, int fsize, int num_buckets, in
 }
 
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
-void make_queue(std::priority_queue<Node> &tree, int *frqs, int num_buckets) {
+void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, int num_buckets) {
+    // Iterate through all buckets
     for (int i = 0; i < num_buckets; ++i) {
-        if (frqs[i] > 0) { // Check if the bucket has a frequency greater than 0
-            Node node;
-            node.frq = frqs[i];  // Frequency
-            node.index = i; // Quantized bucket value
-            node.left = NULL;
-            node.right = NULL;
-            node.encode = 0;
-            node.encode_length = 0;
-            tree.push(node);  // Push the node into the priority queue
+        if (frqs[i] != 0) {
+            // Create a new node with the bucket index and its frequency
+            Node* new_node = new Node(i, frqs[i]);
+            // Push the pointer to the node into the priority queue
+            phtree.push(new_node);
         }
     }
 }
 
 //creates huffman tree
-Node* build_tree(std::priority_queue<Node> &tree){
-
-    while(tree.size() > 1){
-        //allocates space for left_node
-       Node* left_node = (Node*)malloc(sizeof(Node));
-        if (!left_node) {
-            exit(EXIT_FAILURE);
-        }
-        *left_node = tree.top();
+Node* build_tree(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& tree) {
+    // Continue until there is only one node left in the priority queue
+    while (tree.size() > 1) {
+        // Extract the two nodes with the smallest frequencies
+        Node* left = tree.top();
+        tree.pop();
+        Node* right = tree.top();
         tree.pop();
 
-        //allocates space for right_node
-        Node* right_node = (Node*)malloc(sizeof(Node));
-        if (!right_node) {
-            free(left_node);
-            exit(EXIT_FAILURE);
-        }
-        *right_node = tree.top();
-        tree.pop();
+        // Create a new parent node with a combined frequency
+        Node* parent = new Node(-1, left->freq + right->freq);
+        parent->left = left;
+        parent->right = right;
 
-        //allocates space for new_node
-        Node* new_node = (Node*)malloc(sizeof(Node));
-        if (NULL == new_node) {
-            free(left_node);
-            free(right_node);
-            exit(EXIT_FAILURE);
-        }
-        //creates new node
-        new_node->frq = left_node->frq + right_node->frq;
-        new_node->index = -1;
-        new_node->left = left_node;
-        new_node->right = right_node;
-        new_node->encode = 0;
-        new_node->encode_length = 0;
-        tree.push(*new_node);
+        // Push the new parent node back into the priority queue
+        tree.push(parent);
     }
 
-    //returns root node
-    Node* root = (Node*)malloc(sizeof(Node));
-    if (root == NULL) {
-        exit(EXIT_FAILURE);
-    }
-    *root = tree.top();
-    tree.pop();
-    return root;
-
-    return NULL;
+    // The last remaining node is the root of the Huffman tree
+    return tree.top();
 }
 
 //assigns the binary code to each node
-void assign_encode_helper(Node *root, unsigned int encode, int length) {
-    if (NULL == root) return;
-
-    if (root->index >= 0) {
-        root->encode = encode;
-        root->encode_length = length;
+void assign_encode_helper(Node *node, unsigned int encode, int length) {
+    if (NULL == node){
+        return;
     }
 
-    if (root->left) {
-        assign_encode_helper(root->left, (encode << 1), length + 1);  
-    }
+    
+    // If the node is a leaf node (no left or right children)
+    if (node->left == NULL && node->right == NULL) {
+        // Assign the encoding and its length to the leaf node
+        node->encode = encode;
+        node->encode_length = length;
+    } else {
+        // Traverse the left subtree; append 0 to the encode
+        assign_encode_helper(node->left, (encode << 1), length + 1);
 
-    if (root->right) {
-        assign_encode_helper(root->right, ((encode << 1) | 1), length + 1);  
+        // Traverse the right subtree; append 1 to the encode
+        assign_encode_helper(node->right, (encode << 1) | 1, length + 1);
     }
 }
 
 void assign_encode(Node *root) {
-    assign_encode_helper(root, 0, 0);
+     if (root != NULL) {
+        assign_encode_helper(root, 0, 0);
+    }
 }
 
 void store_encodings_helper(Node* root, int encodings[][2], int num_buckets) {
