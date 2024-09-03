@@ -73,7 +73,7 @@ int main (int argc, char *argv[])
 
     //open output file 
     FILE *output = fopen(argv[2], "wb");
-    if (output == NULL) {
+    if (NULL == output) {
         perror("Error opening output file");
         free(src);
         free(quantized_src);
@@ -82,7 +82,7 @@ int main (int argc, char *argv[])
     }
 
     //intialize dest buffer
-    char *dest = (char *)malloc(fsize); //create buffer 
+    char *dest = (char *)malloc(fsize * 2); //create buffer 
     if (NULL == dest) {
        perror("Error allocating memory for dest \n");
         fclose(output);
@@ -99,12 +99,12 @@ int main (int argc, char *argv[])
     clock_t end = clock();
 
     //write data to output file
+
     fwrite(&min, sizeof(float), 1, output);
     fwrite(&bucket_size, sizeof(float), 1, output);
-
     // Store the number of elements in the output file
     fwrite(&fsize, sizeof(int), 1, output);
-
+    fwrite(frqs, sizeof(frqs), 1, output);
     //write compressed data to ouput file
     fwrite(dest, 1, (destsize + 7) / 8, output);
 
@@ -134,13 +134,16 @@ int main (int argc, char *argv[])
 
     // Read min value and bucket size
     float min, bucket_size;
-    fread(&min, sizeof(float), 1, input);
-    fread(&bucket_size, sizeof(float), 1, input);
-
-    // Read quantized data size
     int num_elements;
-    fread(&num_elements, sizeof(int), 1, input);
+    fread(&min, sizeof(float), 1, comp_input);
+    fread(&bucket_size, sizeof(float), 1, comp_input);
+    // Read quantized data size
+    fread(&num_elements, sizeof(int), 1, comp_input);
+    fread(frqs, sizeof(frqs), 1, comp_input);
 
+    std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
+    make_queue(tree, frqs, num_buckets);
+    Node* root = build_tree(tree);
 
     char *compressed_data = (char *)malloc(fsize);
     if (NULL == compressed_data) {
@@ -165,6 +168,7 @@ int main (int argc, char *argv[])
     // Decompress
     decompress(compressed_data, decompressed_data, root, num_elements, min, bucket_size);
 
+
     // Write decompressed data to output file
     FILE *decomp_output = fopen(argv[3], "w");
     if (decomp_output == NULL) {
@@ -181,14 +185,6 @@ int main (int argc, char *argv[])
     free_tree(root);
 
     return 0;
-
-
-    //HOMEWORK
-    //test larger inputs, 100 MB!!!!!!!!!!!!!
-    //floating point data: data generator, generate random floating point data and write to file
-    //  input data: floating point data, and will be converted to a series of bucket numbers, then use huffman to encode bucket numbers
-
- 
 }
 
 
@@ -355,6 +351,7 @@ void compress(const int* src, char* dest, int fsize, int* destsize, int encoding
     dest[dest_index] = '\0';
 }
 
+//STORE ELEMENTS OF DECOMPRESS IN THE BEGINNING OF FILE
 void decompress(const char* src, float* dest, Node* root, int num_elements, float min, float bucket_size) {
     Node* current = root;
     unsigned int buffer = 0;
