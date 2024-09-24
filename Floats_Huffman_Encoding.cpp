@@ -8,7 +8,10 @@
 #include <vector>
 #include <cstdlib>
 #include <iostream>
+#include <chrono>
 #include "Floats_Huffman_Encoding.h"
+
+//seperate compression and decompression into seperate files
 
 int main (int argc, char *argv[])
 {
@@ -59,9 +62,11 @@ int main (int argc, char *argv[])
         return 1;
     }
 
+
     record_frequencies(quantized_src, fsize, num_buckets, frqs);
 
     // Priority queue to build the Huffman tree
+
     std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
     make_queue(tree, frqs, num_buckets);
     Node* root = build_tree(tree);
@@ -92,10 +97,29 @@ int main (int argc, char *argv[])
         return 1;
     }
 
-    int destsize; //size of dest in bits
+using namespace std;
+ 
+int destsize; //size of dest in bits
+//timer for compression + compress function
+
+//   using namespace std::chrono;
+//   high_resolution_clock::time_point t1 = high_resolution_clock::now();
+  
+//   compress(quantized_src, dest, fsize, &destsize, encodings);
+
+//   std::cout << std::endl;
+//   high_resolution_clock::time_point t2 = high_resolution_clock::now();
+//   duration<double> time = duration_cast<duration<double>>(t2 - t1);
+//   std::cout << "It took me " << time.count() << " seconds.";
+//   std::cout << std::endl;g
+
+
+    // int destsize; //size of dest in bits
     //timer for compression + compress function
+
+
     clock_t start = clock();
-    compress(quantized_src, dest, fsize, &destsize, encodings);
+    compress(quantized_src, dest, fsize, &destsize, encodings);    
     clock_t end = clock();
 
     //write data to output file
@@ -109,80 +133,17 @@ int main (int argc, char *argv[])
     fwrite(dest, 1, (destsize + 7) / 8, output);
 
     fclose(output);
+
     free(src);
     free(quantized_src);
     free(frqs);
     free(dest);
+    free_tree(root);
 
     //calculate compressions speed
     double time = (double)(end - start) / CLOCKS_PER_SEC;
     double comp_speed = calc_speed(fsize, time);
-
-
-    /* decompression */
-
-    // Read compressed data from file into a string
-    FILE *comp_input = fopen(argv[2], "rb");
-    if (comp_input == NULL) {
-        printf("Error opening file\n");
-        return 1;
-    }
-
-    fseek(comp_input, 0, SEEK_END);
-    long fsize = ftell(comp_input);
-    fseek(comp_input, 0, SEEK_SET);
-
-    // Read min value and bucket size
-    float min, bucket_size;
-    int num_elements;
-    fread(&min, sizeof(float), 1, comp_input);
-    fread(&bucket_size, sizeof(float), 1, comp_input);
-    // Read quantized data size
-    fread(&num_elements, sizeof(int), 1, comp_input);
-    fread(frqs, sizeof(frqs), 1, comp_input);
-
-    std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
-    make_queue(tree, frqs, num_buckets);
-    Node* root = build_tree(tree);
-
-    char *compressed_data = (char *)malloc(fsize);
-    if (NULL == compressed_data) {
-        printf("Error allocating memory\n");
-        fclose(input);
-        return 1;
-    }
-
-    //read compressed data from file 
-    fread(compressed_data, fsize, 1, comp_input);
-    fclose(comp_input);
-
-
-    // Initialize decompressed data buffer
-    float *decompressed_data = (float *)malloc(fsize + 1);
-    if (NULL == decompressed_data) {
-        printf("Error allocating memory\n");
-        free(compressed_data);
-        return 1;
-    }
-
-    // Decompress
-    decompress(compressed_data, decompressed_data, root, num_elements, min, bucket_size);
-
-
-    // Write decompressed data to output file
-    FILE *decomp_output = fopen(argv[3], "w");
-    if (decomp_output == NULL) {
-        printf("Error opening file\n");
-        free(compressed_data);
-        free(decompressed_data);
-        return 1;
-    }
-    fwrite(decompressed_data, sizeof(float), num_elements, output);
-    fclose(decomp_output);
-
-    free(compressed_data);
-    free(decompressed_data);
-    free_tree(root);
+    printf("Throughput = %f\n", comp_speed);
 
     return 0;
 }
@@ -351,48 +312,11 @@ void compress(const int* src, char* dest, int fsize, int* destsize, int encoding
     dest[dest_index] = '\0';
 }
 
-//STORE ELEMENTS OF DECOMPRESS IN THE BEGINNING OF FILE
-void decompress(const char* src, float* dest, Node* root, int num_elements, float min, float bucket_size) {
-    Node* current = root;
-    unsigned int buffer = 0;
-    int bits_in_buffer = 0;
-    int src_index = 0;
-    int dest_index = 0;
-
-    while (dest_index < num_elements) {
-        // Load bits from the source buffer into the buffer
-        unsigned char byte = src[src_index++];
-        buffer = (buffer << 8) | byte;
-        bits_in_buffer += 8;
-
-        // Decode bits from the buffer into original values
-        while (bits_in_buffer > 0) {
-            int bit = (buffer >> (bits_in_buffer - 1)) & 1;
-            bits_in_buffer--;
-
-            if (bit == 0) {
-                current = current->left;
-            } else {
-                current = current->right;
-            }
-
-            // If we've reached a leaf node, decode the quantized value
-            if (current->left == NULL && current->right == NULL) {
-                int bucket_index = current->index;
-                // Convert bucket index back to the quantized float value
-                float quantized_value = min + bucket_index * bucket_size + bucket_size / 2.0;
-                dest[dest_index++] = quantized_value; // Store the reconstructed float value
-                current = root; // Reset to the root for the next decoding
-            }
-        }
-    }
-}
-
 double calc_speed(long original_size, double compression_time) {
     if (compression_time == 0) {
         return 0;
     }
-    return original_size / compression_time;
+    return original_size / (compression_time * 1024 * 1024);
 }
 
 void free_tree(Node* root) { 
@@ -419,3 +343,21 @@ void reverse_quantize(const int* quantized_data, int size, float min, float buck
         data[i] = min + quantized_data[i] * bucket_size + (bucket_size / 2.0);
     }
 }
+
+// float interpolate(float x0, float y0, float x1, float y1, float x2) {
+//     float slope = (y1 - y0) / (x1 - x0); //find slope
+//     float y2 = y0 + slope * (x2 - x0); //find y2
+//     return y2;
+// }
+
+// void compress_interpolation_error(float actual, float predicted, float error_bound, float *compressed_val) {
+//     float difference = actual - predicted;
+//     if (difference < 0) {
+//         difference = -difference;
+//     }
+//     if (difference <= error_bound) {
+//         *compressed_val = predicted;
+//     } else {
+//         *compressed_val = actual;
+//     }
+// }
