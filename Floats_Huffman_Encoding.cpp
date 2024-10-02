@@ -269,7 +269,7 @@ void store_encodings_helper(Node* root, int encodings[][2], int num_buckets) {
 }
 
 void store_encodings(Node* root, int encodings[][2], int num_buckets) {
-    for (int i = 0; i <= num_buckets; ++i) {
+    for (int i = 0; i < num_buckets; ++i) {
         encodings[i][0] = 0;   // Initialize encode
         encodings[i][1] = 0;   // Initialize encode length
     }
