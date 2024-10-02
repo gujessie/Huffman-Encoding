@@ -38,31 +38,44 @@ int main(int argc, char *argv[]) {
     fread(&num_elements, sizeof(int), 1, input);
     fread(&min, sizeof(float), 1, input);
     fread(&bucket_size, sizeof(float), 1, input);
-    int fsize;
-    fread(&fsize, sizeof(int), 1, input);
+    int frq_count;
+    fread(&frq_count, sizeof(int), 1, input);
 
     printf("num_elements: %d\n", num_elements);
 
     // Read frequency array from the file
-    int *frqs = (int *)malloc(fsize * sizeof(int));
-    fread(frqs, sizeof(int), fsize, input);
+    int *frqs = (int *)malloc(frq_count * sizeof(int));
+    fread(frqs, sizeof(int), frq_count, input);
 
     // Priority queue to rebuild the Huffman tree
     std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
-    make_queue(tree, frqs, fsize);
+    make_queue(tree, frqs, frq_count);
     Node *root = build_tree(tree);
 
-    // Read compressed data from the file
-    char *compressed_data = (char *)malloc(fsize * 2);  // Adjust size as needed
-    fread(compressed_data, 1, fsize * 2, input);
+
+
+    // Calculate compressed data size, read to end of file
+    fseek(input, 0, SEEK_END); // Move to the end of the file
+    long file_size = ftell(input); // Get current position (file size)
+    //Move to where compression starts
+    fseek(input, ftell(input) - frq_count * sizeof(int) - sizeof(num_elements) - sizeof(min) - sizeof(bucket_size) - sizeof(frq_count), SEEK_SET); 
+
+    long compressed_size = file_size - ftell(input);  // compressed_size is remaining size
+
+    // Read compressed data from file
+    char *compressed_data = (char *)malloc(compressed_size);  // Adjust size as needed
+    fread(compressed_data, 1, compressed_size * 2, input);
     fclose(input);
 
     // Decompress the data
     float *dest = (float *)malloc(num_elements * sizeof(float));
 
     if (NULL == dest) {
-        printf("Error in malloc\n");
-        return 0;
+        perror("Error in malloc for decomp data\n");
+        free(frqs);
+        free(compressed_data);
+        free_tree(root);
+        return 1;
     }
     decompress(compressed_data, dest, root, num_elements, min, bucket_size);
 
@@ -73,7 +86,15 @@ int main(int argc, char *argv[]) {
 
     // Write decompressed data to output file
     FILE *output = fopen(argv[2], "wb");
-    fwrite(dest, sizeof(float), fsize, output);
+    if (output == NULL) {
+        perror("Error opening output file");
+        free(frqs);
+        free(compressed_data);
+        free(dest);
+        free_tree(root);
+        return 1;
+    }
+    fwrite(dest, sizeof(float), num_elements, output);
     fclose(output);
 
     // Free memory
@@ -352,9 +373,9 @@ void decompress(const char* src, float* dest, Node* root, int num_elements, floa
     int src_index = 0;
     int dest_index = 0;
 
-printf("num_elements = %d");
+
     while (dest_index < num_elements) {
-        printf("src_index = %d, dest_index = %d\n", src_index, dest_index);
+        
 
         // Load bits from the source buffer into the buffer
         unsigned char byte = src[src_index++];
