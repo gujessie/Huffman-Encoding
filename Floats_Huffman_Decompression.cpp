@@ -62,9 +62,10 @@ int main(int argc, char *argv[]) {
 
     long compressed_size = file_size - ftell(input);  // compressed_size is remaining size
 
+printf("compressed_size = %ld\n", compressed_size);
     // Read compressed data from file
     char *compressed_data = (char *)malloc(compressed_size);  // Adjust size as needed
-    fread(compressed_data, 1, compressed_size * 2, input);
+    fread(compressed_data, 1, compressed_size, input);
     fclose(input);
 
     // Decompress the data
@@ -77,8 +78,14 @@ int main(int argc, char *argv[]) {
         free_tree(root);
         return 1;
     }
+
+    printf("Jessie\n");
+    
+    printf ("min = %f, bucket_size = %f\n", min, bucket_size);
     decompress(compressed_data, dest, root, num_elements, min, bucket_size);
 
+    printf("Jessie 2\n");
+    while (1);
 
     // Reverse quantization
     //float *decompressed_data = (float *)malloc(fsize * sizeof(float));
