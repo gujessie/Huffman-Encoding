@@ -33,6 +33,7 @@ void record_frequencies(const int* quantized_src, int fsize, int num_buckets, in
 void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, int num_buckets);
 Node* build_tree(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& tree);
 void assign_encode(Node *root);
+void store_encodings(Node* root, int encodings[][2], int num_buckets);
 void store_encodings_helper(Node* root, int encodings[][2], int num_buckets);
 void compress(const int* src, char* dest, int fsize, int* destsize, int encodings[][2]);
 void reverse_quantize(const int* quantized_data, int size, float min, float bucket_size, float* data);
