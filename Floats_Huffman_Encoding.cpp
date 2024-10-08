@@ -29,8 +29,11 @@ int main (int argc, char *argv[])
     
     //get input file size 
     fseek(input, 0, SEEK_END);
-    size_t fsize = ftell(input) / sizeof(float); //num elmts in file
+    // this needs to be changed
+    size_t fsize = ftell(input) / sizeof(float); //num elements in file
     fseek(input, 0, SEEK_SET);
+
+printf("&fsize: %ld\n", fsize);
 
     float *src = (float *)malloc(fsize * sizeof(float));
     if (NULL == src) {
@@ -123,10 +126,16 @@ int destsize; //size of dest in bits
     clock_t end = clock();
 
     //write data to output file
+    // write fsize
 
+    fwrite(&fsize, sizeof(size_t), 1, output);
     fwrite(&min, sizeof(float), 1, output);
+    printf("min: %f\n", min);
+    printf("bucket_size: %f\n", bucket_size);
+
     fwrite(&bucket_size, sizeof(float), 1, output);
     // Store the number of elements in the output file
+
     fwrite(&fsize, sizeof(int), 1, output);
     fwrite(frqs, sizeof(frqs), 1, output);
     //write compressed data to ouput file
