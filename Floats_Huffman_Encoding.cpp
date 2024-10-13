@@ -30,18 +30,18 @@ int main (int argc, char *argv[])
     //get input file size 
     fseek(input, 0, SEEK_END);
     // this needs to be changed
-    size_t fsize = ftell(input) / sizeof(float); //num elements in file
+    size_t num_elements = ftell(input) / sizeof(float); //num elements in file
     fseek(input, 0, SEEK_SET);
 
-printf("&fsize: %ld\n", fsize);
+printf("&num_elements: %ld\n", num_elements);
 
-    float *src = (float *)malloc(fsize * sizeof(float));
+    float *src = (float *)malloc(num_elements * sizeof(float));
     if (NULL == src) {
         printf("Error allocating memory\n");
         fclose(input);
         return 1;
     }
-    fread(src, sizeof(float), fsize, input);
+    fread(src, sizeof(float), num_elements, input);
     fclose(input);
 
     /* Quantization */
@@ -49,15 +49,15 @@ printf("&fsize: %ld\n", fsize);
     const float error = 0.25; // can change this number
 
     float min, bucket_size = error * 2;
-    int *quantized_src = (int *)malloc(fsize * sizeof(int));
+    int *quantized_src = (int *)malloc(num_elements * sizeof(int));
     if (NULL == quantized_src) {
         printf("Error allocating memory\n");
         free(src);
         return 1;
     }
-    int num_buckets = quantize(src, fsize, error, quantized_src, &min);
+    int frq_count = quantize(src, num_elements, error, quantized_src, &min);
 
-    int *frqs = (int *)malloc(num_buckets * sizeof(int));
+    int *frqs = (int *)malloc(frq_count * sizeof(int));
     if (NULL == frqs) {
         printf("Error allocating memory\n");
         free(src);
@@ -66,16 +66,16 @@ printf("&fsize: %ld\n", fsize);
     }
 
 
-    record_frequencies(quantized_src, fsize, num_buckets, frqs);
+    record_frequencies(quantized_src, num_elements, frq_count, frqs);
 
     // Priority queue to build the Huffman tree
 
     std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
-    make_queue(tree, frqs, num_buckets);
+    make_queue(tree, frqs, frq_count);
     Node* root = build_tree(tree);
     assign_encode(root);
-    int encodings[num_buckets][2];
-    store_encodings(root, encodings, num_buckets);
+    int encodings[frq_count][2];
+    store_encodings(root, encodings, frq_count);
 
     /* Compression */
 
@@ -90,7 +90,7 @@ printf("&fsize: %ld\n", fsize);
     }
 
     //intialize dest buffer
-    char *dest = (char *)malloc(fsize * 2); //create buffer 
+    char *dest = (char *)malloc(num_elements * 2); //create buffer 
     if (NULL == dest) {
        perror("Error allocating memory for dest \n");
         fclose(output);
@@ -108,7 +108,7 @@ int destsize; //size of dest in bits
 //   using namespace std::chrono;
 //   high_resolution_clock::time_point t1 = high_resolution_clock::now();
   
-//   compress(quantized_src, dest, fsize, &destsize, encodings);
+//   compress(quantized_src, dest, num_elements, &destsize, encodings);
 
 //   std::cout << std::endl;
 //   high_resolution_clock::time_point t2 = high_resolution_clock::now();
@@ -122,13 +122,13 @@ int destsize; //size of dest in bits
 
 
     clock_t start = clock();
-    compress(quantized_src, dest, fsize, &destsize, encodings);    
+    compress(quantized_src, dest, num_elements, &destsize, encodings);    
     clock_t end = clock();
 
     //write data to output file
-    // write fsize
+    // write num_elements
 
-    fwrite(&fsize, sizeof(size_t), 1, output);
+    fwrite(&num_elements, sizeof(size_t), 1, output);
     fwrite(&min, sizeof(float), 1, output);
     printf("min: %f\n", min);
     printf("bucket_size: %f\n", bucket_size);
@@ -136,7 +136,9 @@ int destsize; //size of dest in bits
     fwrite(&bucket_size, sizeof(float), 1, output);
     // Store the number of elements in the output file
 
-    fwrite(&fsize, sizeof(int), 1, output);
+    fwrite(&frq_count, sizeof(int), 1, output); //num elmts in frqs, aka num buckets
+    printf("frq_count: %d\n", frq_count);
+
     fwrite(frqs, sizeof(frqs), 1, output);
     //write compressed data to ouput file
     fwrite(dest, 1, (destsize + 7) / 8, output);
@@ -151,7 +153,7 @@ int destsize; //size of dest in bits
 
     //calculate compressions speed
     double time = (double)(end - start) / CLOCKS_PER_SEC;
-    double comp_speed = calc_speed(fsize, time);
+    double comp_speed = calc_speed(num_elements, time);
     printf("Throughput = %f\n", comp_speed);
 
     return 0;
@@ -169,13 +171,13 @@ int quantize(float* src, size_t size, float error, int* quantized_src, float* mi
 
     // calc the interval and bucket width
     float interval = max - *min;
-    int num_buckets = (int)(interval/(error * 2) + 1);
-    float bucket_size = interval / num_buckets;
+    int frq_count = (int)(interval/(error * 2) + 1);
+    float bucket_size = interval / frq_count;
 
     // Assign each data point to a bucket
     for (int i = 0; i < size; i++) {
         int bucket = (int)((src[i] - *min) / bucket_size);
-        if (bucket == num_buckets) {
+        if (bucket == frq_count) {
             bucket--;  // 
         }
 
@@ -183,24 +185,24 @@ int quantize(float* src, size_t size, float error, int* quantized_src, float* mi
         quantized_src[i] = bucket;
     }
 
-    return num_buckets;
+    return frq_count;
 }
 
-void record_frequencies(const int* quantized_src, int fsize, int num_buckets, int* frqs) {
+void record_frequencies(const int* quantized_src, int num_elements, int frq_count, int* frqs) {
 
     // Count frqs
-    for (int i = 0; i < fsize; i++) {
+    for (int i = 0; i < num_elements; i++) {
         int bucket = quantized_src[i];
-        if (bucket >= 0 && bucket < num_buckets) {
+        if (bucket >= 0 && bucket < frq_count) {
             frqs[bucket]++; // Increment the frequency for the bucket
         }
     }
 }
 
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
-void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, int num_buckets) {
+void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, int frq_count) {
     // Iterate through all buckets
-    for (int i = 0; i < num_buckets; ++i) {
+    for (int i = 0; i < frq_count; ++i) {
         if (frqs[i] != 0) {
             // Create a new node with the bucket index and its frequency
             Node* new_node = new Node(i, frqs[i]);
@@ -260,7 +262,7 @@ void assign_encode(Node *root) {
     }
 }
 
-void store_encodings_helper(Node* root, int encodings[][2], int num_buckets) {
+void store_encodings_helper(Node* root, int encodings[][2], int frq_count) {
     if (!root) return;
 
     if (root->index >= 0) {
@@ -269,23 +271,23 @@ void store_encodings_helper(Node* root, int encodings[][2], int num_buckets) {
     }
 
     if (root->left) {
-        store_encodings_helper(root->left, encodings, num_buckets);
+        store_encodings_helper(root->left, encodings, frq_count);
     }
 
     if (root->right) {
-        store_encodings_helper(root->right, encodings, num_buckets);
+        store_encodings_helper(root->right, encodings, frq_count);
     }
 }
 
-void store_encodings(Node* root, int encodings[][2], int num_buckets) {
-    for (int i = 0; i < num_buckets; ++i) {
+void store_encodings(Node* root, int encodings[][2], int frq_count) {
+    for (int i = 0; i < frq_count; ++i) {
         encodings[i][0] = 0;   // Initialize encode
         encodings[i][1] = 0;   // Initialize encode length
     }
-    store_encodings_helper(root, encodings, num_buckets);
+    store_encodings_helper(root, encodings, frq_count);
 }
 
-void compress(const int* src, char* dest, int fsize, int* destsize, int encodings[][2]) {
+void compress(const int* src, char* dest, int num_elements, int* destsize, int encodings[][2]) {
     int dest_index = 0; // Tracks current position in the destination buffer
     unsigned int buffer = 0; // Stores bits before writing to the destination buffer
     int src_index = 0; // Tracks current position in the source buffer
@@ -293,7 +295,7 @@ void compress(const int* src, char* dest, int fsize, int* destsize, int encoding
     *destsize = 0; // Size of the destination in bits
 
     // Iterate over each element in the source array
-    while (src_index < fsize) {
+    while (src_index < num_elements) {
         int bucket_index = src[src_index]; //
         int encode = encodings[bucket_index][0]; // Get Huffman encoding for the value
         int length = encodings[bucket_index][1]; // Get the length of the encoding
