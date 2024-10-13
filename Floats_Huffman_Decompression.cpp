@@ -35,24 +35,31 @@ int main(int argc, char *argv[]) {
     // Read: min, bucket_size, fsize, and frequencies
     float min, bucket_size;
     int num_elements;
-    fread(&num_elements, sizeof(int), 1, input);
+    fread(&num_elements, sizeof(size_t), 1, input);
     fread(&min, sizeof(float), 1, input);
     fread(&bucket_size, sizeof(float), 1, input);
-    int frq_count;
-    fread(&frq_count, sizeof(int), 1, input);
+    int frq_count; //elements in frq array
+    fread(&frq_count, sizeof(int), 1, input); //num elements in frqs, aka number of buckets
 
     printf("num_elements: %d\n", num_elements);
+    printf ("min = %f, bucket_size = %f\n", min, bucket_size);
 
     // Read frequency array from the file
     int *frqs = (int *)malloc(frq_count * sizeof(int));
     fread(frqs, sizeof(int), frq_count, input);
 
+    printf("frq_count = %d\n", frq_count);
+
+    printf ("before make queue\n");
     // Priority queue to rebuild the Huffman tree
     std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
     make_queue(tree, frqs, frq_count);
+
+    printf ("before build tree\n");
+
     Node *root = build_tree(tree);
 
-
+    printf ("after build tree\n");
 
     // Calculate compressed data size, read to end of file
     fseek(input, 0, SEEK_END); // Move to the end of the file
@@ -81,7 +88,6 @@ printf("compressed_size = %ld\n", compressed_size);
 
     printf("Jessie\n");
     
-    printf ("min = %f, bucket_size = %f\n", min, bucket_size);
     decompress(compressed_data, dest, root, num_elements, min, bucket_size);
 
     printf("Jessie 2\n");
