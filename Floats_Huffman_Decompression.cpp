@@ -386,10 +386,8 @@ void decompress(const char* src, float* dest, Node* root, int num_elements, floa
     int src_index = 0;
     int dest_index = 0;
 
-
     while (dest_index < num_elements) {
-        
-
+ 
         // Load bits from the source buffer into the buffer
         unsigned char byte = src[src_index++];
         buffer = (buffer << 8) | byte;
