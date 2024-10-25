@@ -64,7 +64,9 @@ printf("&num_elements: %ld\n", num_elements);
         free(quantized_src);
         return 1;
     }
-
+    for (int i = 0; i < frq_count; i++){
+            frqs[i] = 0;
+    }
 
     record_frequencies(quantized_src, num_elements, frq_count, frqs);
 
@@ -139,8 +141,10 @@ int destsize; //size of dest in bits
     fwrite(&frq_count, sizeof(int), 1, output); //num elmts in frqs, aka num buckets
     printf("frq_count: %d\n", frq_count);
 
-    fwrite(frqs, sizeof(frqs), 1, output);
+    fwrite(frqs, frq_count * sizeof(int), 1, output);
     //write compressed data to ouput file
+    printf("Header size = %d\n", sizeof(size_t) + sizeof(float) + sizeof(float) + sizeof(int) + frq_count * sizeof(int));
+    printf("size of compressed data: %d\n", (destsize + 7) / 8);
     fwrite(dest, 1, (destsize + 7) / 8, output);
 
     fclose(output);
