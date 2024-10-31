@@ -13,23 +13,6 @@
 
 using namespace std;
 
-// Implement writefile function
-void writefile(const char* fname, const char* buff, size_t size) {
-    FILE* output = fopen(fname, "wb");
-    if (NULL == output) {
-        perror("Error opening output file");
-        return;
-    }
-
-    size_t written = fwrite(buff, 1, size, output);
-    if (written != size) {
-        printf("Error writing to output file\n");
-    }
-
-    fclose(output);
-}
-
-// Implement main function
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <input_file> <output_file>\n", argv[0]);
@@ -68,9 +51,22 @@ int main(int argc, char* argv[]) {
     }
     fclose(input);
 
-    // Allocate memory for compressed data (estimate)
-    // Assuming maximum compressed size is roughly 2 bytes per float
-    char* dest = (char*)malloc(num_elements * 2);
+    // Calculate header size
+    // Header consists of:
+    // num_elements (size_t)
+    // min (float)
+    // bucket_size (float)
+    // frq_count (int)
+    // frqs (int array of size frq_count)
+    // encodings (int[frq_count][2])
+    // Maximum header size
+    // To avoid dynamic allocation here, we'll estimate the maximum possible header size
+    // But since frq_count is determined during compression, we'll handle it within compress
+
+    // Allocate memory for compressed data (including header)
+    // Initially, allocate enough space for the header (assuming frq_count is not excessively large)
+    // You may need to adjust this based on your specific use case
+    char* dest = (char*)malloc(MAXLENGTH);
     if (NULL == dest) {
         perror("Error allocating memory for dest");
         free(src);
@@ -80,17 +76,11 @@ int main(int argc, char* argv[]) {
     // Define quantization error
     const float error = 0.25f;
 
-    // Variables to hold compression metadata
-    float min = 0.0f;
-    float bucket_size = 0.0f;
-    int frq_count = 0;
-    int* frqs = NULL;
-    int** encodings = NULL;
+    // Variable to hold compression metadata
     int destsize = 0;
 
     // Perform compression
-    int compress_status = compress(src, dest, num_elements, &destsize, error,
-                                   &min, &bucket_size, &frq_count, &frqs, &encodings);
+    int compress_status = compress(src, dest, num_elements, &destsize, error);
     if (compress_status != 0) {
         printf("Compression failed\n");
         free(src);
@@ -98,63 +88,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-
-    size_t header_size = sizeof(size_t) + sizeof(float) + sizeof(float) + sizeof(int) +
-                         frq_count * sizeof(int) + frq_count * 2 * sizeof(int);
-
-    // Calculate total size: header + compressed data
-    size_t total_size = header_size + ((destsize + 7) / 8);
-
-    // Allocate buffer for header and data
-    char* file_buffer = (char*)malloc(total_size);
-    if (NULL == file_buffer) {
-        perror("Error allocating memory for file_buffer");
-        free(src);
-        free(dest);
-        return 1;
-    }
-
-
-    // Serialize header into file_buffer
-    size_t offset_ser = 0;
-    memcpy(file_buffer + offset_ser, &num_elements, sizeof(size_t));
-    offset_ser += sizeof(size_t);
-    memcpy(file_buffer + offset_ser, &min, sizeof(float));
-    offset_ser += sizeof(float);
-    memcpy(file_buffer + offset_ser, &bucket_size, sizeof(float));
-    offset_ser += sizeof(float);
-    memcpy(file_buffer + offset_ser, &frq_count, sizeof(int));
-    offset_ser += sizeof(int);
-    memcpy(file_buffer + offset_ser, frqs, frq_count * sizeof(int));
-    offset_ser += frq_count * sizeof(int);
-
-    // Serialize encodings (int[frq_count][2])
-    // Since encodings are int** pointing to contiguous encodings_block
-    // Iterate and copy each pair
-    for (int i = 0; i < frq_count; ++i) {
-        memcpy(file_buffer + offset_ser, encodings[i], 2 * sizeof(int));
-        offset_ser += 2 * sizeof(int);
-    }
-
-    // Serialize compressed data
-    memcpy(file_buffer + offset_ser, dest, (destsize + 7) / 8);
-    offset_ser += (destsize + 7) / 8;
-
     // Write to output file
-    writefile(argv[2], file_buffer, total_size);
+    writefile(argv[2], dest, destsize);
 
     // Free allocated memory
     free(src);
     free(dest);
-    free(file_buffer);
-    // Free frqs and encodings
-    free(frqs);
-    free(encodings); // encodings_block was allocated as a single block and pointed by encodings[i]
 
     return 0;
 }
 
-// Implement quantize function
 int quantize(float* src, size_t size, float error, int* quantized_src, float* min) {
     // Find min and max values in data
     *min = src[0];
@@ -192,7 +135,6 @@ int quantize(float* src, size_t size, float error, int* quantized_src, float* mi
     return frq_count;
 }
 
-
 void record_frequencies(const int* quantized_src, size_t fsize, size_t num_buckets, int* frqs) {
     // Count frequencies
     for (size_t i = 0; i < fsize; i++) {
@@ -202,7 +144,6 @@ void record_frequencies(const int* quantized_src, size_t fsize, size_t num_bucke
         }
     }
 }
-
 
 void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, size_t num_buckets) {
     // Iterate through all buckets
@@ -215,7 +156,6 @@ void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& p
         }
     }
 }
-
 
 Node* build_tree(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& tree) {
     // Continue until there is only one node left in the priority queue
@@ -239,7 +179,6 @@ Node* build_tree(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& 
     return tree.top();
 }
 
-
 void assign_encode_helper(Node* node, unsigned int encode, int length) {
     if (NULL == node) {
         return;
@@ -259,21 +198,19 @@ void assign_encode_helper(Node* node, unsigned int encode, int length) {
     }
 }
 
-// Implement assign_encode function
 void assign_encode(Node* root) {
     if (NULL != root) {
         assign_encode_helper(root, 0, 0);
     }
 }
 
-
-void store_encodings_helper(Node* root, int encodings[][2], size_t frq_count) {
+void store_encodings_helper(Node* root, int* encodings, size_t frq_count) {
     if (!root)
         return;
 
     if (root->index >= 0 && static_cast<size_t>(root->index) < frq_count) {
-        encodings[root->index][0] = root->encode;
-        encodings[root->index][1] = root->encode_length;
+        encodings[root->index * 2] = root->encode;
+        encodings[root->index * 2 + 1] = root->encode_length;
     }
 
     if (root->left) {
@@ -285,18 +222,16 @@ void store_encodings_helper(Node* root, int encodings[][2], size_t frq_count) {
     }
 }
 
-
-void store_encodings(Node* root, int encodings[][2], size_t frq_count) {
+void store_encodings(Node* root, int* encodings, size_t frq_count) {
     // Initialize encodings
     for (size_t i = 0; i < frq_count; ++i) {
-        encodings[i][0] = 0; // Initialize encode
-        encodings[i][1] = 0; // Initialize encode length
+        encodings[i * 2] = 0; // Initialize encode
+        encodings[i * 2 + 1] = 0; // Initialize encode length
     }
     store_encodings_helper(root, encodings, frq_count);
 }
 
-
-void compress_quantization_levels(const int* src, char* dest, size_t num_elements, int* destsize, int encodings[][2]) {
+void compress_quantization_levels(const int* src, char* dest, size_t num_elements, int* destsize, int* encodings) {
     int dest_index = 0;           // Tracks current position in the destination buffer
     unsigned int buffer = 0;      // Stores bits before writing to the destination buffer
     size_t src_index = 0;         // Tracks current position in the source buffer
@@ -306,8 +241,8 @@ void compress_quantization_levels(const int* src, char* dest, size_t num_element
     // Iterate over each element in the source array
     while (src_index < num_elements) {
         int bucket_index = src[src_index];
-        int encode = encodings[bucket_index][0];    // Get Huffman encoding for the value
-        int length = encodings[bucket_index][1];    // Get the length of the encoding
+        int encode = encodings[bucket_index * 2];       // Get Huffman encoding for the value
+        int length = encodings[bucket_index * 2 + 1];   // Get the length of the encoding
 
         // Add the current value's encoding to the bit buffer
         buffer = (buffer << length) | encode;
@@ -332,15 +267,12 @@ void compress_quantization_levels(const int* src, char* dest, size_t num_element
     // No need to null-terminate binary data
 }
 
-
 void reverse_quantize(const int* quantized_data, size_t size, float min, float bucket_size, float* data) {
     for (size_t i = 0; i < size; i++) {
         // Calculate the approximate original value by finding the midpoint of the bucket
         data[i] = min + quantized_data[i] * bucket_size + (bucket_size / 2.0f);
     }
 }
-
-
 
 double calc_speed(long original_size, double compression_time) {
     if (compression_time == 0) {
@@ -366,73 +298,104 @@ void free_tree(Node* root) {
     delete root; // Use delete instead of free for C++ objects
 }
 
-
-int compress(float* src, char* dest, size_t num_elements, int* destsize, float error,
-            float* min, float* bucket_size, int* frq_count, int** frqs, int*** encodings) {
-    // Quantization
+int compress(float* src, char* dest, size_t num_elements, int* destsize, float error) {
+    // Allocate memory for quantized_src
     int* quantized_src = (int*)malloc(num_elements * sizeof(int));
     if (NULL == quantized_src) {
         printf("Error allocating memory for quantized_src\n");
         return 1;
     }
 
-    *frq_count = quantize(src, num_elements, error, quantized_src, min);
-    *bucket_size = error * 2; // As per your original code
+    // Quantization
+    float min = 0.0f;
+    float bucket_size = 0.0f;
+    int frq_count = quantize(src, num_elements, error, quantized_src, &min);
+    bucket_size = error * 2; // As per your original code
 
     // Allocate and initialize frequency array
-    *frqs = (int*)malloc(*frq_count * sizeof(int));
-    if (NULL == *frqs) {
+    int* frqs = (int*)malloc(frq_count * sizeof(int));
+    if (NULL == frqs) {
         printf("Error allocating memory for frqs\n");
         free(quantized_src);
         return 1;
     }
-    memset(*frqs, 0, (*frq_count) * sizeof(int));
+    memset(frqs, 0, frq_count * sizeof(int));
 
     // Record frequencies
-    record_frequencies(quantized_src, num_elements, *frq_count, *frqs);
+    record_frequencies(quantized_src, num_elements, frq_count, frqs);
 
     // Build Huffman Tree
     std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
-    make_queue(tree, *frqs, *frq_count);
+    make_queue(tree, frqs, frq_count);
     Node* root = build_tree(tree);
     assign_encode(root);
 
     // Allocate encodings array as a contiguous block
-    int* encodings_block = (int*)malloc(*frq_count * 2 * sizeof(int));
-    if (NULL == encodings_block) {
-        printf("Error allocating memory for encodings_block\n");
+    int* encodings = (int*)malloc(frq_count * 2 * sizeof(int));
+    if (NULL == encodings) {
+        printf("Error allocating memory for encodings\n");
         free(quantized_src);
-        free(*frqs);
+        free(frqs);
         free_tree(root);
         return 1;
-    }
-
-    // Allocate encodings as array of pointers to each pair
-    *encodings = (int**)malloc(*frq_count * sizeof(int*));
-    if (NULL == *encodings) {
-        printf("Error allocating memory for encodings pointers\n");
-        free(encodings_block);
-        free(quantized_src);
-        free(*frqs);
-        free_tree(root);
-        return 1;
-    }
-    for (int i = 0; i < *frq_count; ++i) {
-        (*encodings)[i] = encodings_block + (i * 2);
     }
 
     // Store encodings
-    store_encodings(root, encodings_block, *frq_count);
+    store_encodings(root, encodings, frq_count);
 
     // Perform compression
-    compress_quantization_levels(quantized_src, dest, num_elements, destsize, encodings_block);
+    compress_quantization_levels(quantized_src, dest, num_elements, destsize, encodings);
 
-    // Free allocated memory
+    // Free allocated memory except frqs and encodings (needed for serialization)
     free(quantized_src);
-    free(*frqs);
-    free(encodings_block);
-    free(*encodings);
     free_tree(root);
+
+    // Serialize metadata into the dest buffer
+    size_t header_size = sizeof(size_t) + sizeof(float) + sizeof(float) + sizeof(int) +
+                         frq_count * sizeof(int) + frq_count * 2 * sizeof(int);
+    size_t total_size = header_size + ((*destsize + 7) / 8);
+
+    // Shift existing data in dest to make space for the header
+    memmove(dest + header_size, dest, (*destsize + 7) / 8);
+
+    // Serialize header into dest buffer
+    size_t offset = 0;
+    memcpy(dest + offset, &num_elements, sizeof(size_t));
+    offset += sizeof(size_t);
+    memcpy(dest + offset, &min, sizeof(float));
+    offset += sizeof(float);
+    memcpy(dest + offset, &bucket_size, sizeof(float));
+    offset += sizeof(float);
+    memcpy(dest + offset, &frq_count, sizeof(int));
+    offset += sizeof(int);
+    memcpy(dest + offset, frqs, frq_count * sizeof(int));
+    offset += frq_count * sizeof(int);
+    memcpy(dest + offset, encodings, frq_count * 2 * sizeof(int));
+    offset += frq_count * 2 * sizeof(int);
+
+    // Update destsize to include header
+    *destsize = static_cast<int>(total_size);
+
+    // Free frqs and encodings as they are now serialized into dest
+    free(frqs);
+    free(encodings);
 
     return 0;
 }
+
+void writefile(const char* fname, const char* buff, size_t size) {
+    FILE* output = fopen(fname, "wb");
+    if (NULL == output) {
+        perror("Error opening output file");
+        return;
+    }
+
+    size_t written = fwrite(buff, 1, size, output);
+    if (written != size) {
+        printf("Error writing to output file\n");
+    }
+
+    fclose(output);
+}
+
+
