@@ -16,7 +16,7 @@ using namespace std;
 // Implement writefile function
 void writefile(const char* fname, const char* buff, size_t size) {
     FILE* output = fopen(fname, "wb");
-    if (output == nullptr) {
+    if (NULL == output) {
         perror("Error opening output file");
         return;
     }
@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
 
     // Opening input file
     FILE* input = fopen(argv[1], "rb"); // Changed to "rb" for binary read
-    if (input == nullptr) {
+    if (NULL == input) {
         perror("Error opening input file");
         return 1;
     }
@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
 
     // Allocate memory for source data
     float* src = (float*)malloc(num_elements * sizeof(float));
-    if (src == nullptr) {
+    if (NULL == src) {
         printf("Error allocating memory for src\n");
         fclose(input);
         return 1;
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
     // Allocate memory for compressed data (estimate)
     // Assuming maximum compressed size is roughly 2 bytes per float
     char* dest = (char*)malloc(num_elements * 2);
-    if (dest == nullptr) {
+    if (NULL == dest) {
         perror("Error allocating memory for dest");
         free(src);
         return 1;
@@ -84,8 +84,8 @@ int main(int argc, char* argv[]) {
     float min = 0.0f;
     float bucket_size = 0.0f;
     int frq_count = 0;
-    int* frqs = nullptr;
-    int** encodings = nullptr;
+    int* frqs = NULL;
+    int** encodings = NULL;
     int destsize = 0;
 
     // Perform compression
@@ -98,14 +98,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Calculate header size
-    // Header consists of:
-    // num_elements (size_t)
-    // min (float)
-    // bucket_size (float)
-    // frq_count (int)
-    // frqs (int array of size frq_count)
-    // encodings (int[frq_count][2])
+
     size_t header_size = sizeof(size_t) + sizeof(float) + sizeof(float) + sizeof(int) +
                          frq_count * sizeof(int) + frq_count * 2 * sizeof(int);
 
@@ -114,7 +107,7 @@ int main(int argc, char* argv[]) {
 
     // Allocate buffer for header and data
     char* file_buffer = (char*)malloc(total_size);
-    if (file_buffer == nullptr) {
+    if (NULL == file_buffer) {
         perror("Error allocating memory for file_buffer");
         free(src);
         free(dest);
@@ -248,12 +241,12 @@ Node* build_tree(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& 
 
 
 void assign_encode_helper(Node* node, unsigned int encode, int length) {
-    if (node == nullptr) {
+    if (NULL == node) {
         return;
     }
 
     // If the node is a leaf node (no left or right children)
-    if (node->left == nullptr && node->right == nullptr) {
+    if (NULL == node->left && NULL == node->right) {
         // Assign the encoding and its length to the leaf node
         node->encode = encode;
         node->encode_length = length;
@@ -268,7 +261,7 @@ void assign_encode_helper(Node* node, unsigned int encode, int length) {
 
 // Implement assign_encode function
 void assign_encode(Node* root) {
-    if (root != nullptr) {
+    if (NULL != root) {
         assign_encode_helper(root, 0, 0);
     }
 }
@@ -378,7 +371,7 @@ int compress(float* src, char* dest, size_t num_elements, int* destsize, float e
             float* min, float* bucket_size, int* frq_count, int** frqs, int*** encodings) {
     // Quantization
     int* quantized_src = (int*)malloc(num_elements * sizeof(int));
-    if (quantized_src == nullptr) {
+    if (NULL == quantized_src) {
         printf("Error allocating memory for quantized_src\n");
         return 1;
     }
@@ -388,7 +381,7 @@ int compress(float* src, char* dest, size_t num_elements, int* destsize, float e
 
     // Allocate and initialize frequency array
     *frqs = (int*)malloc(*frq_count * sizeof(int));
-    if (*frqs == nullptr) {
+    if (NULL == *frqs) {
         printf("Error allocating memory for frqs\n");
         free(quantized_src);
         return 1;
@@ -406,7 +399,7 @@ int compress(float* src, char* dest, size_t num_elements, int* destsize, float e
 
     // Allocate encodings array as a contiguous block
     int* encodings_block = (int*)malloc(*frq_count * 2 * sizeof(int));
-    if (encodings_block == nullptr) {
+    if (NULL == encodings_block) {
         printf("Error allocating memory for encodings_block\n");
         free(quantized_src);
         free(*frqs);
@@ -416,7 +409,7 @@ int compress(float* src, char* dest, size_t num_elements, int* destsize, float e
 
     // Allocate encodings as array of pointers to each pair
     *encodings = (int**)malloc(*frq_count * sizeof(int*));
-    if (*encodings == nullptr) {
+    if (NULL == *encodings) {
         printf("Error allocating memory for encodings pointers\n");
         free(encodings_block);
         free(quantized_src);
