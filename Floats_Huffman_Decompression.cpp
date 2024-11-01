@@ -13,153 +13,140 @@
 
 //seperate compression and decompression into seperate files
 
-int main (int argc, char *argv[])
-{
-    if ( argc != 3 ) {
+#include <stdio.h>
+#include <stdlib.h>
+#include <queue>
+#include <vector>
+#include "Floats_Huffman_Encoding.h"
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
         fprintf(stderr, "error in arguments");
         return 1;
     }
-   
-   //opening input file
-    FILE *input = fopen(argv[1], "r");
+
+    // Opening input file
+    FILE *input = fopen(argv[1], "rb");
     if (NULL == input) { 
         perror("Error opening input file");
         return 1;
     }
-    
-    //get input file size 
-    fseek(input, 0, SEEK_END);
-    // this needs to be changed
-    size_t num_elements = ftell(input) / sizeof(float); //num elements in file
-    fseek(input, 0, SEEK_SET);
 
-printf("&num_elements: %ld\n", num_elements);
+    // figure out the size of compressed file.
+   // Calculate compressed data size, read to end of file
+    fseek(input, 0, SEEK_END); // Move to the end of the file
+    long file_size = ftell(input); // Get current position (file size)
+    printf("file size = %lu\n", file_size);    
 
-    float *src = (float *)malloc(num_elements * sizeof(float));
-    if (NULL == src) {
-        printf("Error allocating memory\n");
-        fclose(input);
+    char * compressed_buffer = (char *) malloc(file_size);
+    if (NULL == compressed_buffer) {
+        perror("Error allocating buffer");
         return 1;
     }
-    fread(src, sizeof(float), num_elements, input);
-    fclose(input);
 
-    /* Quantization */
-    //calculate num buckets
-    const float error = 0.25; // can change this number
-
-    float min, bucket_size = error * 2;
-    int *quantized_src = (int *)malloc(num_elements * sizeof(int));
-    if (NULL == quantized_src) {
-        printf("Error allocating memory\n");
-        free(src);
+    dest = (float *) malloc (file_size);
+    if (NULL == dest) {
+        perror("Error allocating buffer");
         return 1;
     }
-    int frq_count = quantize(src, num_elements, error, quantized_src, &min);
+    decompress(compressed_buffer, dest, file_size, int * destsize){
 
+#if 0
+    // Read: min, bucket_size, fsize, and frequencies
+    float min, bucket_size;
+    size_t num_elements;
+    fread(&num_elements, sizeof(size_t), 1, input);
+    fread(&min, sizeof(float), 1, input);
+    fread(&bucket_size, sizeof(float), 1, input);
+    int frq_count; //elements in frq array
+    fread(&frq_count, sizeof(int), 1, input); //num elements in frqs, aka number of buckets
+
+    printf("num_elements: %d\n", num_elements);
+    printf ("min = %f, bucket_size = %f\n", min, bucket_size);
+
+    // Read frequency array from the file
     int *frqs = (int *)malloc(frq_count * sizeof(int));
-    if (NULL == frqs) {
-        printf("Error allocating memory\n");
-        free(src);
-        free(quantized_src);
-        return 1;
-    }
-    for (int i = 0; i < frq_count; i++){
-            frqs[i] = 0;
-    }
+    fread(frqs, sizeof(int), frq_count, input);
 
-    record_frequencies(quantized_src, num_elements, frq_count, frqs);
+    printf("frq_count = %d\n", frq_count);
 
-    // Priority queue to build the Huffman tree
-
+    printf ("before make queue\n");
+    // Priority queue to rebuild the Huffman tree
     std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt> tree;
     make_queue(tree, frqs, frq_count);
-    Node* root = build_tree(tree);
-    assign_encode(root);
-    int encodings[frq_count][2];
-    store_encodings(root, encodings, frq_count);
 
-    /* Compression */
+    printf ("before build tree\n");
 
-    //open output file 
-    FILE *output = fopen(argv[2], "wb");
-    if (NULL == output) {
-        perror("Error opening output file");
-        free(src);
-        free(quantized_src);
-        free(frqs);
-        return 1;
-    }
+    Node *root = build_tree(tree);
 
-    //intialize dest buffer
-    char *dest = (char *)malloc(num_elements * 2); //create buffer 
+    printf ("after build tree\n");
+
+    // Calculate compressed data size, read to end of file
+    fseek(input, 0, SEEK_END); // Move to the end of the file
+    long file_size = ftell(input); // Get current position (file size)
+    printf("file size = %lu\n", file_size);
+    //Move to where compression starts
+
+    fseek(input, frq_count * sizeof(int) 
+                + sizeof(num_elements) 
+                + sizeof(min) 
+                + sizeof(bucket_size) 
+                + sizeof(frq_count), 
+                SEEK_SET); 
+
+    
+    //sizeof(size_t) + sizeof(float) + sizeof(float) + sizeof(int) + frq_count * sizeof(int)
+
+    printf ("Header size = %d\n", frq_count * sizeof(int) 
+                + sizeof(num_elements) 
+                + sizeof(min) 
+                + sizeof(bucket_size) 
+                + sizeof(frq_count));
+
+    long compressed_size = file_size - ftell(input);  // compressed_size is remaining size
+
+printf("compressed_size = %ld\n", compressed_size);
+    // Read compressed data from file
+    char *compressed_data = (char *)malloc(compressed_size);  // Adjust size as needed
+    fread(compressed_data, 1, compressed_size, input);
+    fclose(input);
+
+    // Decompress the data
+    float *dest = (float *)malloc(num_elements * sizeof(float));
+
     if (NULL == dest) {
-       perror("Error allocating memory for dest \n");
-        fclose(output);
-        free(src);
-        free(quantized_src);
+        perror("Error in malloc for decomp data\n");
         free(frqs);
+        free(compressed_data);
+        free_tree(root);
         return 1;
     }
 
-using namespace std;
- 
-int destsize; //size of dest in bits
-//timer for compression + compress function
+    printf("Jessie\n");
+    
+    decompress(compressed_data, dest, root, num_elements, min, bucket_size);
 
-//   using namespace std::chrono;
-//   high_resolution_clock::time_point t1 = high_resolution_clock::now();
-  
-//   compress(quantized_src, dest, num_elements, &destsize, encodings);
+    printf("Jessie 2\n");
 
-//   std::cout << std::endl;
-//   high_resolution_clock::time_point t2 = high_resolution_clock::now();
-//   duration<double> time = duration_cast<duration<double>>(t2 - t1);
-//   std::cout << "It took me " << time.count() << " seconds.";
-//   std::cout << std::endl;g
-
-
-    // int destsize; //size of dest in bits
-    //timer for compression + compress function
-
-
-    clock_t start = clock();
-    compress(quantized_src, dest, num_elements, &destsize, encodings);    
-    clock_t end = clock();
-
-    //write data to output file
-    // write num_elements
-
-    fwrite(&num_elements, sizeof(size_t), 1, output);
-    fwrite(&min, sizeof(float), 1, output);
-    printf("min: %f\n", min);
-    printf("bucket_size: %f\n", bucket_size);
-
-    fwrite(&bucket_size, sizeof(float), 1, output);
-    // Store the number of elements in the output file
-
-    fwrite(&frq_count, sizeof(int), 1, output); //num elmts in frqs, aka num buckets
-    printf("frq_count: %d\n", frq_count);
-
-    fwrite(frqs, frq_count * sizeof(int), 1, output);
-    //write compressed data to ouput file
-    printf("Header size = %d\n", sizeof(size_t) + sizeof(float) + sizeof(float) + sizeof(int) + frq_count * sizeof(int));
-    printf("size of compressed data: %d\n", (destsize + 7) / 8);
-    fwrite(dest, 1, (destsize + 7) / 8, output);
-
+    // Write decompressed data to output file
+    FILE *output = fopen(argv[2], "wb");
+    if (output == NULL) {
+        perror("Error opening output file");
+        free(frqs);
+        free(compressed_data);
+        free(dest);
+        free_tree(root);
+        return 1;
+    }
+    fwrite(dest, sizeof(float), num_elements, output);
     fclose(output);
 
-    free(src);
-    free(quantized_src);
+    // Free memory
     free(frqs);
+    free(compressed_data);
     free(dest);
     free_tree(root);
-
-    //calculate compressions speed
-    double time = (double)(end - start) / CLOCKS_PER_SEC;
-    double comp_speed = calc_speed(num_elements, time);
-    printf("Throughput = %f\n", comp_speed);
-
+#endif
     return 0;
 }
 
@@ -175,13 +162,13 @@ int quantize(float* src, size_t size, float error, int* quantized_src, float* mi
 
     // calc the interval and bucket width
     float interval = max - *min;
-    int frq_count = (int)(interval/(error * 2) + 1);
-    float bucket_size = interval / frq_count;
+    int num_buckets = (int)(interval/(error * 2) + 1);
+    float bucket_size = interval / num_buckets;
 
     // Assign each data point to a bucket
     for (int i = 0; i < size; i++) {
         int bucket = (int)((src[i] - *min) / bucket_size);
-        if (bucket == frq_count) {
+        if (bucket == num_buckets) {
             bucket--;  // 
         }
 
@@ -189,24 +176,24 @@ int quantize(float* src, size_t size, float error, int* quantized_src, float* mi
         quantized_src[i] = bucket;
     }
 
-    return frq_count;
+    return num_buckets;
 }
 
-void record_frequencies(const int* quantized_src, int num_elements, int frq_count, int* frqs) {
+void record_frequencies(const int* quantized_src, int fsize, int num_buckets, int* frqs) {
 
     // Count frqs
-    for (int i = 0; i < num_elements; i++) {
+    for (int i = 0; i < fsize; i++) {
         int bucket = quantized_src[i];
-        if (bucket >= 0 && bucket < frq_count) {
+        if (bucket >= 0 && bucket < num_buckets) {
             frqs[bucket]++; // Increment the frequency for the bucket
         }
     }
 }
 
 //inserts nodes that have a frequency(exists in the data) into the priority queue tree
-void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, int frq_count) {
+void make_queue(std::priority_queue<Node*, std::vector<Node*>, LessThanByCnt>& phtree, int* frqs, int num_buckets) {
     // Iterate through all buckets
-    for (int i = 0; i < frq_count; ++i) {
+    for (int i = 0; i < num_buckets; ++i) {
         if (frqs[i] != 0) {
             // Create a new node with the bucket index and its frequency
             Node* new_node = new Node(i, frqs[i]);
@@ -266,7 +253,7 @@ void assign_encode(Node *root) {
     }
 }
 
-void store_encodings_helper(Node* root, int encodings[][2], int frq_count) {
+void store_encodings_helper(Node* root, int encodings[][2], int num_buckets) {
     if (!root) return;
 
     if (root->index >= 0) {
@@ -275,63 +262,80 @@ void store_encodings_helper(Node* root, int encodings[][2], int frq_count) {
     }
 
     if (root->left) {
-        store_encodings_helper(root->left, encodings, frq_count);
+        store_encodings_helper(root->left, encodings, num_buckets);
     }
 
     if (root->right) {
-        store_encodings_helper(root->right, encodings, frq_count);
+        store_encodings_helper(root->right, encodings, num_buckets);
     }
 }
 
-void store_encodings(Node* root, int encodings[][2], int frq_count) {
-    for (int i = 0; i < frq_count; ++i) {
+void store_encodings(Node* root, int encodings[][2], int num_buckets) {
+    for (int i = 0; i < num_buckets; ++i) {
         encodings[i][0] = 0;   // Initialize encode
         encodings[i][1] = 0;   // Initialize encode length
     }
-    store_encodings_helper(root, encodings, frq_count);
+    store_encodings_helper(root, encodings, num_buckets);
 }
 
-void compress(const int* src, char* dest, int num_elements, int* destsize, int encodings[][2]) {
-    int dest_index = 0; // Tracks current position in the destination buffer
-    unsigned int buffer = 0; // Stores bits before writing to the destination buffer
-    int src_index = 0; // Tracks current position in the source buffer
-    int bits_in_buffer = 0; // Counts bits currently in the buffer
-    *destsize = 0; // Size of the destination in bits
+//STORE ELEMENTS OF DECOMPRESS IN THE BEGINNING OF FILE
+// ZSTD: size_t ZSTD_decompress( void* dst, size_t dstCapacity,
+//                  const void* src, size_t compressedSize);
 
-    // Iterate over each element in the source array
-    while (src_index < num_elements) {
-        int bucket_index = src[src_index]; //
-        int encode = encodings[bucket_index][0]; // Get Huffman encoding for the value
-        int length = encodings[bucket_index][1]; // Get the length of the encoding
+// src here points to a buffer that has metadata (min, frqs...) and compressed data.
+// void decompress(const char * fname, ....)
+void decompress(const char* src, float* dest, size_t src_size, int * destsize){
+    float min;
+    // inside here, the code figures out min, frqs, building a tree.
 
-        // Add the current value's encoding to the bit buffer
-        buffer = (buffer << length) | encode;
-        bits_in_buffer += length;
+    // Not like this:
 
-        // Write to the destination buffer byte by byte until there are less than 8 bits left
-        while (bits_in_buffer >= 8) {
-            unsigned char byte = (buffer >> (bits_in_buffer - 8)) & 0xFF;
-            dest[dest_index++] = byte; // Add the byte to the destination buffer
-            bits_in_buffer -= 8; // Update the number of bits in the buffer
-            *destsize += 8;
+ 
+}
+
+
+void decompress_1(const char* src, float* dest, Node* root, int num_elements, float min, float bucket_size) {
+    Node* current = root;
+    unsigned int buffer = 0;
+    int bits_in_buffer = 0;
+    int src_index = 0;
+    int dest_index = 0;
+
+    while (dest_index < num_elements) {
+ 
+        // Load bits from the source buffer into the buffer
+        unsigned char byte = src[src_index++];
+        buffer = (buffer << 8) | byte;
+        bits_in_buffer += 8;
+
+        // Decode bits from the buffer into original values
+        while (bits_in_buffer > 0) {
+            int bit = (buffer >> (bits_in_buffer - 1)) & 1;
+            bits_in_buffer--;
+
+            if (bit == 0) {
+                current = current->left;
+            } else {
+                current = current->right;
+            }
+
+            // If we've reached a leaf node, decode the quantized value
+            if (current->left == NULL && current->right == NULL) {
+                int bucket_index = current->index;
+                // Convert bucket index back to the quantized float value
+                float quantized_value = min + bucket_index * bucket_size + bucket_size / 2.0;
+                dest[dest_index++] = quantized_value; // Store the reconstructed float value
+                current = root; // Reset to the root for the next decoding
+            }
         }
-        src_index++;
     }
-
-    // Handle any remaining bits in the buffer that don't fit into a full byte
-    if (bits_in_buffer > 0) {
-        unsigned char byte = buffer << (8 - bits_in_buffer);
-        dest[dest_index++] = byte;
-        *destsize += bits_in_buffer;
-    }
-    dest[dest_index] = '\0';
 }
 
 double calc_speed(long original_size, double compression_time) {
     if (compression_time == 0) {
         return 0;
     }
-    return original_size / (compression_time * 1024 * 1024);
+    return original_size / compression_time;
 }
 
 void free_tree(Node* root) { 
@@ -358,21 +362,3 @@ void reverse_quantize(const int* quantized_data, int size, float min, float buck
         data[i] = min + quantized_data[i] * bucket_size + (bucket_size / 2.0);
     }
 }
-
-// float interpolate(float x0, float y0, float x1, float y1, float x2) {
-//     float slope = (y1 - y0) / (x1 - x0); //find slope
-//     float y2 = y0 + slope * (x2 - x0); //find y2
-//     return y2;
-// }
-
-// void compress_interpolation_error(float actual, float predicted, float error_bound, float *compressed_val) {
-//     float difference = actual - predicted;
-//     if (difference < 0) {
-//         difference = -difference;
-//     }
-//     if (difference <= error_bound) {
-//         *compressed_val = predicted;
-//     } else {
-//         *compressed_val = actual;
-//     }
-// }
