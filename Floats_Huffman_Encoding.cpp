@@ -51,21 +51,7 @@ int main(int argc, char* argv[]) {
     }
     fclose(input);
 
-    // Calculate header size
-    // Header consists of:
-    // num_elements (size_t)
-    // min (float)
-    // bucket_size (float)
-    // frq_count (int)
-    // frqs (int array of size frq_count)
-    // encodings (int[frq_count][2])
-    // Maximum header size
-    // To avoid dynamic allocation here, we'll estimate the maximum possible header size
-    // But since frq_count is determined during compression, we'll handle it within compress
 
-    // Allocate memory for compressed data (including header)
-    // Initially, allocate enough space for the header (assuming frq_count is not excessively large)
-    // You may need to adjust this based on your specific use case
     char* dest = (char*)malloc(MAXLENGTH);
     if (NULL == dest) {
         perror("Error allocating memory for dest");
