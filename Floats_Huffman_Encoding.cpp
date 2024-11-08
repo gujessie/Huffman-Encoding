@@ -51,7 +51,6 @@ int main(int argc, char* argv[]) {
     }
     fclose(input);
 
-
     char* dest = (char*)malloc(MAXLENGTH);
     if (NULL == dest) {
         perror("Error allocating memory for dest");
@@ -383,5 +382,4 @@ void writefile(const char* fname, const char* buff, size_t size) {
 
     fclose(output);
 }
-
 
