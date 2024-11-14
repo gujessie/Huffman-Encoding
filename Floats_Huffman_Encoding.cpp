@@ -13,6 +13,7 @@
 
 using namespace std;
 
+#if 0
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <input_file> <output_file>\n", argv[0]);
@@ -82,6 +83,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+#endif
 
 int quantize(float* src, size_t size, float error, int* quantized_src, float* min) {
     // Find min and max values in data
@@ -382,4 +384,5 @@ void writefile(const char* fname, const char* buff, size_t size) {
 
     fclose(output);
 }
+
 
