@@ -42,5 +42,8 @@ double calc_speed(long original_size, double compression_time);
 void free_tree(Node* root);
 int compress(float* src, char* dest, size_t num_elements, int* destsize, float error);
 void writefile(const char* fname, const char* buff, size_t size);
+int decompress(const char* src, float* dest, size_t src_size, int* destsize);
+//void huffman_decompress(const char* src, float* dest, Node* root, int num_elements, float min, float bucket_size);
+
 
 #endif // FLOATS_HUFFMAN_ENCODING_H
