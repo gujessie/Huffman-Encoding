@@ -49,8 +49,10 @@ int main(int argc, char *argv[]) {
     }
     fclose(input);
 
-   
-    float* dest = (float *) malloc (file_size * sizeof(float)); // Over-allocate
+    size_t num_elements;
+    memcpy(&num_elements, compressed_buffer, sizeof(size_t));
+
+    float* dest = (float *) malloc (num_elements * sizeof(float)); // Over-allocate
     if (dest == NULL) {
         perror("Error allocating buffer for decompressed data");
         free(compressed_buffer);
@@ -120,7 +122,7 @@ void decompress_1(const char* src, float* dest, Node* root, int num_elements, fl
                 current = current->right;
             }
 
-            // If we've reached a leaf node, decode the quantized value
+            //for leaf node, decode the quantized value
             if (current->left == NULL && current->right == NULL) {
                 int bucket_index = current->index;
                 // Convert bucket index back to the quantized float value
@@ -133,6 +135,14 @@ void decompress_1(const char* src, float* dest, Node* root, int num_elements, fl
 }
 
 // Decompress function implementation
+#if 0
+file size = 129623407
+num_elements: 134217728
+min = 0.000000, bucket_size = 0.500000
+frq_count = 201
+Compressed data size = 129620975 bytes
+offset size = 2432 bytes
+#endif
 int decompress(const char* src, float* dest, size_t src_size, int* destsize){
     // Initialize pointer to traverse the src buffer
     size_t offset = 0;
@@ -187,6 +197,8 @@ int decompress(const char* src, float* dest, size_t src_size, int* destsize){
     // Calculate the size of compressed data
     size_t compressed_size = src_size - offset;
     printf("Compressed data size = %zu bytes\n", compressed_size);
+
+    printf("offset size = %u bytes\n", offset);
 
     // Read compressed data
     const char* compressed_data = src + offset;
