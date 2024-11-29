@@ -13,7 +13,6 @@
 
 using namespace std;
 
-#if 0
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <input_file> <output_file>\n", argv[0]);
@@ -83,7 +82,7 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-#endif
+
 
 int quantize(float* src, size_t size, float error, int* quantized_src, float* min) {
     // Find min and max values in data
@@ -211,6 +210,8 @@ void store_encodings_helper(Node* root, int* encodings, size_t frq_count) {
 
 void store_encodings(Node* root, int* encodings, size_t frq_count) {
     // Initialize encodings
+    // During decompression, you read 'encodings' from the buffer.
+    // But  after that, you zero
     for (size_t i = 0; i < frq_count; ++i) {
         encodings[i * 2] = 0; // Initialize encode
         encodings[i * 2 + 1] = 0; // Initialize encode length
@@ -360,6 +361,12 @@ int compress(float* src, char* dest, size_t num_elements, int* destsize, float e
     memcpy(dest + offset, encodings, frq_count * 2 * sizeof(int));
     offset += frq_count * 2 * sizeof(int);
 
+   
+    printf("numelems: %d\n", num_elements);
+    printf("min: %f\n", min);
+    printf("bucket_size: %f\n", bucket_size);
+    printf("frq_count: %d\n", frq_count);
+    printf("offset: %d\n", offset);
     // Update destsize to include header
     *destsize = static_cast<int>(total_size);
 
