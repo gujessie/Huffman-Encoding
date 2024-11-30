@@ -18,6 +18,7 @@ struct Node {
     unsigned int encode;    // Huffman encoding
     int encode_length;      // Length of the Huffman encoding
 
+    Node() {};
     Node(int idx, int frequency) 
         : index(idx), freq(frequency), left(nullptr), right(nullptr), encode(0), encode_length(0) {}
 };
